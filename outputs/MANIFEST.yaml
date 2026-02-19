@@ -1,0 +1,16 @@
+version: 1
+updated: "2026-02-19T12:45:00Z"
+scan_paths:
+  - outputs/
+experiments:
+  e001:
+    path: outputs/e001/
+    script: ""
+    params: {}
+    outputs:
+      - outputs/e001/result.csv
+    status: final
+    updated: "2026-02-19T12:45:00Z"
+    description: "플러그인 E2E 테스트"
+    issue: 1
+    branch: feature-1
