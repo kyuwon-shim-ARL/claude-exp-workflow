@@ -1,0 +1,10 @@
+{
+  "name": "exp-workflow",
+  "description": "Experiment lifecycle management with GitHub Project integration, MANIFEST.yaml tracking, and automated logging",
+  "version": "1.0.0",
+  "author": {
+    "name": "kyuwon"
+  },
+  "keywords": ["experiment", "research", "workflow", "manifest", "github-project"],
+  "license": "MIT"
+}

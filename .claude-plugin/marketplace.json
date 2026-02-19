@@ -1,0 +1,16 @@
+{
+  "name": "exp-workflow-marketplace",
+  "owner": {
+    "name": "kyuwon"
+  },
+  "metadata": {
+    "description": "Experiment workflow plugin for Claude Code - manage research experiments with GitHub Project, MANIFEST.yaml, and automated logging"
+  },
+  "plugins": [
+    {
+      "name": "exp-workflow",
+      "source": "./",
+      "description": "Experiment lifecycle: /exp-init, /exp-start, /exp-status, /exp-finalize"
+    }
+  ]
+}
