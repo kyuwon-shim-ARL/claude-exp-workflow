@@ -1,5 +1,6 @@
 ---
 description: "실험 현황 통합 조회 - 마일스톤 + 칸반 + MANIFEST (global)"
+allowed-tools: ["Bash", "Read"]
 ---
 
 # /exp-status Command
@@ -50,9 +51,10 @@ Experiments:
   e001   | Baseline Scoring    | final        | 4/4   | #1
   e002   | Feature Selection   | final        | 3/3   | #5
   e003   | DEG Analysis        | experimental | 2/4   | #8
-  e004   | Biomarker Discovery | pending      | 0/0   | -
+  e004   | Biomarker Discovery | experimental | 0/3   | #12
+  e005   | Legacy Method       | deprecated   | 2/2   | #15
 
-MANIFEST: 4 experiments (2 final, 1 experimental, 1 pending)
+MANIFEST: 5 experiments (2 final, 2 experimental, 1 deprecated)
 
 Next: /exp-start e004 or /ralplan for e003 or /exp-finalize for completed
 ```

@@ -1,6 +1,6 @@
 ---
 name: experiment-workflow
-description: Experiment lifecycle management. Use when the user mentions experiments (e001, e002...), MANIFEST, experiment log, 실험 시작, 실험 현황, 실험 확정, or experiment finalization.
+description: Experiment lifecycle management. This skill should be activated when the user mentions experiments (e001, e002...), MANIFEST, experiment log, 실험 시작, 실험 현황, 실험 확정, or experiment finalization.
 ---
 
 # Experiment Workflow Manager
@@ -40,10 +40,13 @@ GitHub Project (칸반/마일스톤) + MANIFEST.yaml (결과 추적) + experimen
 
 1. **실험 시작 시**: omc-feature-start 호출 + outputs/MANIFEST.yaml 업데이트 + experiment-log.md 기록
 2. **ralplan 완료 시**: omc-task-check 호출 + experiment-log.md 기록
-3. **ralph 완료 시**: omc-task-check 호출 + experiment-log.md 실행 기록
-4. **실험 확정 시**: MANIFEST status 변경 + experiment-log.md 확정 기록 + PR 제안
-5. **/detailed-report 시**: MANIFEST final만 스캔
-6. **/research 시**: experiment-log.md에 비평 기록
+3. **ralph 실행 시**: 스크립트 실행 후 MANIFEST의 `script:` 및 `params:` 자동 갱신
+   - `script:`: 실행된 메인 스크립트 경로 (예: `scripts/run_e001.py`)
+   - `params:`: 실행에 사용된 주요 파라미터 딕셔너리
+4. **ralph 완료 시**: omc-task-check 호출 + experiment-log.md 실행 기록
+5. **실험 확정 시**: MANIFEST status 변경 + `outputs:` 자동 탐지 갱신 + experiment-log.md 확정 기록 + PR 제안
+6. **/detailed-report 시**: MANIFEST final만 스캔
+7. **/research 시**: experiment-log.md에 비평 기록
 
 ## MANIFEST.yaml Structure
 
@@ -86,8 +89,9 @@ experiments:
 
 ## Anti-Patterns
 
-- DON'T: manually edit MANIFEST, use experimental results in /detailed-report
+- DON'T: manually edit MANIFEST status/experiments (use commands instead), use experimental results in /detailed-report
 - DO: always use /exp-start, keep MANIFEST and log in sync, mark final before reporting
+- NOTE: `script:`, `params:`, `outputs:` fields are auto-populated by /ralph execution and /exp-finalize. These are the only MANIFEST fields that get updated outside of /exp-start and /exp-finalize.
 
 ## Dependencies
 

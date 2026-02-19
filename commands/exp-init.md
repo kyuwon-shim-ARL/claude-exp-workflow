@@ -1,5 +1,6 @@
 ---
 description: "실험 워크플로우 프로젝트 초기화 (global)"
+allowed-tools: ["Bash", "Read", "Write", "Edit"]
 ---
 
 # Experiment Workflow - Project Init
@@ -49,7 +50,20 @@ gh project field-list $PROJECT_NUMBER --owner @me --format json
 
 "Status" 필드의 id와 options (Backlog, Planning, AI Doing, Human Review, Done) 파싱.
 
-### 5. .omc-config.sh 생성
+### 5. .gitignore 업데이트 (config 생성 전에 반드시 먼저)
+다음 규칙 추가 (없는 경우만):
+```
+# OMC Experiment Workflow
+outputs/**/*.csv
+outputs/**/*.png
+outputs/**/*.pkl
+outputs/**/*.html
+!outputs/MANIFEST.yaml
+.omc-config.sh
+```
+
+### 6. .omc-config.sh 생성
+> .gitignore에 이미 등록된 상태이므로 실수로 커밋되지 않음
 ```bash
 #!/bin/bash
 # OMC GitHub Workflow Configuration
@@ -67,25 +81,13 @@ export OMC_STATUS_DONE="$STATUS_DONE"
 export OMC_CURRENT_MILESTONE=""
 ```
 
-### 6. outputs/MANIFEST.yaml 생성
+### 7. outputs/MANIFEST.yaml 생성
 ```yaml
 version: 1
 updated: "YYYY-MM-DDTHH:MM:SSZ"
 scan_paths:
   - outputs/
 experiments: {}
-```
-
-### 7. .gitignore 업데이트
-다음 규칙 추가 (없는 경우만):
-```
-# OMC Experiment Workflow
-outputs/**/*.csv
-outputs/**/*.png
-outputs/**/*.pkl
-outputs/**/*.html
-!outputs/MANIFEST.yaml
-.omc-config.sh
 ```
 
 ### 8. (Optional) 첫 마일스톤 생성

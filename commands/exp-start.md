@@ -1,5 +1,6 @@
 ---
 description: "새 실험 시작 - GitHub 이슈 생성 + 브랜치 + MANIFEST 등록 (global)"
+allowed-tools: ["Bash", "Read", "Write", "Edit"]
 ---
 
 # /exp-start - Start New Experiment
@@ -36,9 +37,10 @@ omc-feature-start --type feature "e{NUM}: {goal}" \
 Capture: Issue number, Branch name, GitHub URL
 
 ### 4. Update MANIFEST.yaml
-Add new experiment entry to `outputs/MANIFEST.yaml`:
+Add new experiment entry and update root timestamp in `outputs/MANIFEST.yaml`:
 
 ```yaml
+updated: "YYYY-MM-DDTHH:MM:SSZ"  # root updated: refresh on every change
 experiments:
   e{NUM}:
     path: outputs/e{NUM}/
@@ -87,6 +89,7 @@ Next steps:
 
 | Condition | Action |
 |-----------|--------|
+| No arguments provided | Show error: "Usage: /exp-start e{NUM} {goal description}" |
 | Missing `.omc-config.sh` | Show error: "Run /exp-init first" |
 | Experiment number exists in MANIFEST | Show error: "e{NUM} already exists. Use a different number." |
 | `omc-feature-start` fails | Show error with CLI output, don't proceed |
