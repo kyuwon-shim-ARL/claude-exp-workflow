@@ -83,16 +83,18 @@ export OMC_CURRENT_MILESTONE=""
 
 ### 7. outputs/MANIFEST.yaml 생성
 ```yaml
-version: 1
+version: 2
 updated: "YYYY-MM-DDTHH:MM:SSZ"
 scan_paths:
   - outputs/
+milestone: {}
 experiments: {}
 ```
 
 ### 8. (Optional) 첫 마일스톤 생성
 ```bash
-omc-milestone-start "$MILESTONE_NAME" "Initial milestone"
+# Use /exp-milestone start instead of calling omc-milestone-start directly
+/exp-milestone start "$MILESTONE_NAME" "Initial milestone"
 ```
 
 ### 9. 완료 메시지
@@ -100,6 +102,7 @@ omc-milestone-start "$MILESTONE_NAME" "Initial milestone"
 초기화 완료!
 
 다음 명령어 사용 가능:
+- /exp-milestone start "v1.0" "Description"
 - /exp-start e001 실험 목표 설명
 - /exp-status
 - /exp-finalize e001

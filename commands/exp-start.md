@@ -10,14 +10,18 @@ Start a new experiment with GitHub issue tracking, branch creation, and MANIFEST
 ## Usage
 ```
 /exp-start e005 ISM 윈도우 사이즈 최적화
+/exp-start e005 --milestone "v2.0" ISM 윈도우 사이즈 최적화
 ```
 
 ## Workflow
 
 ### 1. Parse Arguments
-Extract experiment number and goal from $ARGUMENTS:
-- Pattern: `e{NUM} {goal description}`
+Extract experiment number, optional `--milestone` flag, and goal from $ARGUMENTS:
+- Pattern: `e{NUM} [--milestone "title"] {goal description}`
 - Example: "e005 ISM 윈도우 사이즈 최적화"
+- Example: "e005 --milestone v2.0 ISM 윈도우 사이즈 최적화"
+
+If `--milestone` is provided, use that value. Otherwise, fall back to MANIFEST `milestone.title`.
 
 ### 2. Validate Environment
 Check `.omc-config.sh` exists:
@@ -37,7 +41,12 @@ omc-feature-start --type feature "e{NUM}: {goal}" \
 Capture: Issue number, Branch name, GitHub URL
 
 ### 4. Update MANIFEST.yaml
-Add new experiment entry and update root timestamp in `outputs/MANIFEST.yaml`:
+Add new experiment entry and update root timestamp in `outputs/MANIFEST.yaml`.
+
+**Milestone resolution order:**
+1. `--milestone` 인자가 있으면 → 해당 값 사용
+2. 없으면 → MANIFEST `milestone.title` 사용
+3. 둘 다 없으면 → milestone 필드 생략
 
 ```yaml
 updated: "YYYY-MM-DDTHH:MM:SSZ"  # root updated: refresh on every change
@@ -51,6 +60,7 @@ experiments:
     description: "{goal}"
     issue: {issue_number}
     branch: {branch_name}
+    milestone: "{milestone_title}"  # resolved from --milestone flag or MANIFEST, omit if none
 ```
 
 Handle cases:
@@ -66,6 +76,7 @@ Append to `experiment-log.md`:
 - **목표**: {goal}
 - **Issue**: #{issue_number}
 - **Branch**: {branch_name}
+- **Milestone**: {milestone_title or "none"}
 - **Status**: started
 ```
 

@@ -13,10 +13,11 @@ Promotes experiments from experimental to final status with automatic MANIFEST u
 /exp-finalize e005
 /exp-finalize e001 e002 e004              # Batch finalization
 /exp-finalize --deprecate e003 "v2로 대체"  # Deprecate experiment
+/exp-finalize --reopen e005 "통계 오류 수정"  # Reopen finalized experiment
 ```
 
 ## Arguments
-- `$ARGUMENTS`: One or more experiment numbers OR `--deprecate e003 "reason"`
+- `$ARGUMENTS`: One or more experiment numbers OR `--deprecate e003 "reason"` OR `--reopen e003 "reason"`
 
 ## Execution Steps
 
@@ -24,6 +25,7 @@ Promotes experiments from experimental to final status with automatic MANIFEST u
 - Single: `e005`
 - Batch: `e001 e002 e004`
 - Deprecate: `--deprecate e003 "reason text"`
+- Reopen: `--reopen e005 "reason text"`
 
 ### 2. Validate Environment
 Check `.omc-config.sh` and `outputs/MANIFEST.yaml` exist. If missing: "Run /exp-init first."
@@ -55,8 +57,19 @@ experiments:
     deprecation_reason: "v2로 대체"
 ```
 
+**Reopen (final/deprecated → experimental):**
+```yaml
+updated: "2026-02-16T10:00:00Z"    # root updated: always refresh
+experiments:
+  e005:
+    status: experimental             # final → experimental
+    updated: "2026-02-16T10:00:00Z"  # ISO 8601 format
+    reopen_reason: "통계 오류 수정"
+```
+Reopen removes `deprecation_reason` (if present) and adds `reopen_reason`. The experiment returns to `experimental` state and can be modified, then finalized again.
+
 ### 6. Update experiment-log.md
-Append finalization or deprecation entry.
+Append finalization or deprecation entry. Include milestone information if the experiment has a `milestone` field.
 
 **Output Auto-Detection Rules:**
 Scan the experiment's `path` directory (from MANIFEST) and `scan_paths` entries:
@@ -70,6 +83,12 @@ Scan the experiment's `path` directory (from MANIFEST) and `scan_paths` entries:
 | `*.html` | Report | "report.html (interactive report)" |
 | `*.pkl`, `*.joblib` | Model artifact | "model.pkl (model artifact)" |
 | `*.log`, `*.txt` | Log output | "run.log (execution log)" |
+
+**Milestone Info:**
+If the experiment has a `milestone` field in MANIFEST, include it in the log entry:
+```markdown
+- **Milestone**: v1.0-foundation
+```
 
 **Detection Process:**
 1. List all files in `outputs/e{NUM}/`
@@ -93,8 +112,9 @@ Show: changes made, PR URL, issues to be closed.
 
 ## Edge Cases
 - Experiment not found → show available experiments
-- Already final → warn and skip
-- Already deprecated → warn and skip
+- Already final → warn and skip (use `--reopen` to return to experimental)
+- Already deprecated → warn and skip (use `--reopen` to return to experimental)
+- Already experimental + `--reopen` → warn and skip
 - Missing .omc-config.sh → "Run /exp-init first"
 - No issue number → create PR without "Closes #N"
 - Unrelated uncommitted changes → only commit MANIFEST + log
@@ -118,6 +138,7 @@ If any step in the finalization sequence fails, follow this recovery protocol:
 
 ## Related Commands
 - `/exp-init` - Initialize MANIFEST.yaml
+- `/exp-milestone` - Manage milestones (start/status/end)
 - `/exp-start` - Create new experiment
 - `/exp-status` - View all experiment statuses
 - `/detailed-report` - Generate report (uses final experiments only)

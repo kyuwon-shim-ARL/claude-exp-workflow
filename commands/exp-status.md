@@ -24,10 +24,12 @@ Check `.omc-config.sh` and `outputs/MANIFEST.yaml` exist. If missing, instruct u
 
 ### 2. Read MANIFEST Data
 Read `outputs/MANIFEST.yaml` to get experiment IDs, titles, status, output files.
+Also read `milestone` block for active milestone information.
 
 ### 3. Fetch GitHub Data
 ```bash
-omc-milestone-status
+# Only call omc-milestone-status if MANIFEST milestone.title is non-empty
+omc-milestone-status "$MILESTONE_TITLE"
 omc-feature-progress --all
 ```
 
@@ -36,6 +38,7 @@ For each experiment in MANIFEST:
 - Match with GitHub Issue (by experiment ID in title)
 - Extract task completion ratio
 - Determine current branch
+- Group experiments by `milestone` field (if present)
 
 ### 5. Generate Output
 
@@ -43,14 +46,17 @@ For each experiment in MANIFEST:
 ```
 Experiment Status Dashboard
 
-Milestone: v1.0-foundation
-  Progress: [########....] 50% (2/4)
+Milestone: v1.0-foundation (active)
+  GitHub Progress: [########....] 50% (2/4 issues)
 
-Experiments:
+Experiments [v1.0-foundation]:
   ID     | Title               | Status       | Tasks | Issue
   e001   | Baseline Scoring    | final        | 4/4   | #1
   e002   | Feature Selection   | final        | 3/3   | #5
   e003   | DEG Analysis        | experimental | 2/4   | #8
+
+Experiments [no milestone]:
+  ID     | Title               | Status       | Tasks | Issue
   e004   | Biomarker Discovery | experimental | 0/3   | #12
   e005   | Legacy Method       | deprecated   | 2/2   | #15
 
@@ -58,6 +64,8 @@ MANIFEST: 5 experiments (2 final, 2 experimental, 1 deprecated)
 
 Next: /exp-start e004 or /ralplan for e003 or /exp-finalize for completed
 ```
+
+If no active milestone in MANIFEST, show all experiments without grouping (backwards compatible).
 
 #### Detail Mode (with experiment ID)
 Shows: Issue info, branch, task checklist, output files, recent commits.
@@ -70,6 +78,7 @@ Shows: Issue info, branch, task checklist, output files, recent commits.
 ## Related Commands
 
 - `/exp-init`: Initialize experiment tracking
+- `/exp-milestone`: Manage milestones (start/status/end)
 - `/exp-start <id>`: Start new experiment
 - `/exp-finalize <id>`: Promote to final or deprecate
 - `/ralph`: Execute next task in current experiment
