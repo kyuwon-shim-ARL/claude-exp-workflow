@@ -1,0 +1,75 @@
+#!/bin/bash
+# ~/bin/omc-milestone-end
+# Close or reopen the current active milestone
+# Usage: omc-milestone-end [--force] [--reopen]
+
+set -e
+
+# Parse arguments
+FORCE=false
+REOPEN=false
+for arg in "$@"; do
+  case "$arg" in
+    --force) FORCE=true ;;
+    --reopen) REOPEN=true ;;
+    *)
+      echo "Usage: omc-milestone-end [--force] [--reopen]"
+      echo "  --force   Close even if there are open issues"
+      echo "  --reopen  Reopen the milestone"
+      exit 1
+      ;;
+  esac
+done
+
+# Load configuration
+source ~/bin/omc-load-config 2>/dev/null || true
+REPO="${OMC_GH_REPO:-$(gh repo view --json nameWithOwner -q '.nameWithOwner' 2>/dev/null)}"
+MILESTONE_TITLE="${OMC_CURRENT_MILESTONE:-}"
+
+if [ -z "$REPO" ]; then
+  echo "Error: Unable to determine repository."
+  exit 1
+fi
+
+if [ -z "$MILESTONE_TITLE" ]; then
+  echo "No active milestone to close."
+  exit 0
+fi
+
+# Escape special characters
+ESCAPED_TITLE=$(printf '%s' "$MILESTONE_TITLE" | sed 's/"/\\"/g')
+
+# Get milestone number
+MILESTONE_NUM=$(gh api "repos/$REPO/milestones?state=all" --jq ".[] | select(.title == \"$ESCAPED_TITLE\") | .number" 2>/dev/null || echo "")
+
+if [ -z "$MILESTONE_NUM" ]; then
+  echo "Milestone '$MILESTONE_TITLE' not found."
+  exit 1
+fi
+
+if [ "$REOPEN" = true ]; then
+  # Reopen milestone
+  gh api "repos/$REPO/milestones/$MILESTONE_NUM" --method PATCH -f state='open' >/dev/null 2>&1
+  echo "Reopened milestone: $MILESTONE_TITLE"
+  exit 0
+fi
+
+# Check for open issues
+OPEN_ISSUES=$(gh api "repos/$REPO/milestones/$MILESTONE_NUM" --jq '.open_issues' 2>/dev/null)
+
+if [ "$OPEN_ISSUES" -gt 0 ] && [ "$FORCE" != true ]; then
+  echo "Warning: Milestone '$MILESTONE_TITLE' has $OPEN_ISSUES open issues."
+  echo "Close all issues first, or use --force to close anyway."
+  exit 1
+fi
+
+# Close milestone
+gh api "repos/$REPO/milestones/$MILESTONE_NUM" --method PATCH -f state='closed' >/dev/null 2>&1
+echo "Closed milestone: $MILESTONE_TITLE"
+
+# Remove from project config file
+CONFIG_FILE=".omc-config.sh"
+if [ -f "$CONFIG_FILE" ]; then
+  sed -i "s/^export OMC_CURRENT_MILESTONE=.*/export OMC_CURRENT_MILESTONE=\"\"/" "$CONFIG_FILE"
+fi
+echo "No active milestone."

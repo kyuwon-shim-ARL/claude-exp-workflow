@@ -1,0 +1,62 @@
+#!/bin/bash
+# ~/bin/omc-milestone-status
+# Show milestone progress
+# Usage: omc-milestone-status [milestone-title]
+
+# Load configuration
+source ~/bin/omc-load-config 2>/dev/null || true
+REPO="${OMC_GH_REPO:-$(gh repo view --json nameWithOwner -q '.nameWithOwner' 2>/dev/null)}"
+MILESTONE_TITLE="${1:-$OMC_CURRENT_MILESTONE}"
+
+if [ -z "$REPO" ]; then
+  echo "Error: Unable to determine repository."
+  exit 1
+fi
+
+if [ -z "$MILESTONE_TITLE" ]; then
+  echo "Usage: omc-milestone-status [milestone-title]"
+  echo "Or set OMC_CURRENT_MILESTONE in .omc-config.sh"
+  exit 1
+fi
+
+# Escape special characters
+ESCAPED_TITLE=$(printf '%s' "$MILESTONE_TITLE" | sed 's/"/\\"/g')
+
+# Get milestone data (search both open and closed)
+MILESTONE_DATA=$(gh api "repos/$REPO/milestones?state=all" --jq ".[] | select(.title == \"$ESCAPED_TITLE\")" 2>/dev/null)
+
+if [ -z "$MILESTONE_DATA" ]; then
+  echo "Milestone '$MILESTONE_TITLE' not found."
+  exit 1
+fi
+
+OPEN=$(echo "$MILESTONE_DATA" | jq '.open_issues')
+CLOSED=$(echo "$MILESTONE_DATA" | jq '.closed_issues')
+STATE=$(echo "$MILESTONE_DATA" | jq -r '.state')
+TOTAL=$((OPEN + CLOSED))
+DUE=$(echo "$MILESTONE_DATA" | jq -r '.due_on // "No due date"')
+
+if [ "$TOTAL" -gt 0 ]; then
+  PROGRESS=$((CLOSED * 100 / TOTAL))
+else
+  PROGRESS=0
+fi
+
+echo "═══════════════════════════════════════"
+echo "Milestone: $MILESTONE_TITLE"
+echo "State:    $STATE"
+echo "═══════════════════════════════════════"
+echo "Progress: $PROGRESS% ($CLOSED/$TOTAL completed)"
+echo "Open:     $OPEN issues"
+echo "Closed:   $CLOSED issues"
+echo "Due:      $DUE"
+echo ""
+
+# Progress bar visualization
+BAR_WIDTH=40
+FILLED=$((PROGRESS * BAR_WIDTH / 100))
+EMPTY=$((BAR_WIDTH - FILLED))
+printf "["
+printf "%${FILLED}s" | tr ' ' '█'
+printf "%${EMPTY}s" | tr ' ' '░'
+printf "] $PROGRESS%%\n"

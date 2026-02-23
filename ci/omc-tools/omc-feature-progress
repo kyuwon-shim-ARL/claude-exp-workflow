@@ -1,0 +1,37 @@
+#!/bin/bash
+# ~/bin/omc-feature-progress
+# Show feature completion status
+# Usage: omc-feature-progress [--all]
+#
+# Options:
+#   --all   Show all feature issues (default: open only)
+
+set -e
+
+SHOW_ALL=""
+if [ "$1" = "--all" ]; then
+  SHOW_ALL="--state all"
+fi
+
+# Load configuration
+source ~/bin/omc-load-config 2>/dev/null || true
+REPO="${OMC_GH_REPO:-$(gh repo view --json nameWithOwner -q '.nameWithOwner' 2>/dev/null)}"
+
+if [ -z "$REPO" ]; then
+  echo "Error: Unable to determine repository."
+  exit 1
+fi
+
+echo "Feature Progress Report"
+echo "======================="
+echo ""
+
+gh issue list --repo "$REPO" --label "feature" ${SHOW_ALL:-"--state open"} \
+  --json number,title,body,state \
+  --jq '.[] | {
+    number,
+    title,
+    state,
+    total: ([.body | scan("- \\[.\\]")] | length),
+    done: ([.body | scan("- \\[x\\]")] | length)
+  } | "#\(.number): \(.title)\n  Status: \(.state) | Progress: \(.done)/\(.total) tasks\n"'

@@ -1,0 +1,144 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  # ─────────────────────────────────────────────
+  # Job 1: Validate plugin structure (no external deps)
+  # ─────────────────────────────────────────────
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate JSON files
+        run: |
+          echo "Checking plugin.json..."
+          python3 -c "import json; json.load(open('.claude-plugin/plugin.json'))"
+          echo "Checking marketplace.json..."
+          python3 -c "import json; json.load(open('.claude-plugin/marketplace.json'))"
+          echo "✅ All JSON files valid"
+
+      - name: Validate required files exist
+        run: |
+          files=(
+            ".claude-plugin/plugin.json"
+            ".claude-plugin/marketplace.json"
+            "commands/exp-init.md"
+            "commands/exp-start.md"
+            "commands/exp-status.md"
+            "commands/exp-finalize.md"
+            "commands/exp-milestone.md"
+            "skills/experiment-workflow/SKILL.md"
+            "tests/e2e-test.sh"
+          )
+          for f in "${files[@]}"; do
+            if [ -f "$f" ]; then
+              echo "  ✅ $f"
+            else
+              echo "  ❌ MISSING: $f" && exit 1
+            fi
+          done
+
+      - name: Validate version consistency
+        run: |
+          PLUGIN_VER=$(python3 -c "import json; print(json.load(open('.claude-plugin/plugin.json'))['version'])")
+          echo "plugin.json version: $PLUGIN_VER"
+
+          # Check SKILL.md references version 2 MANIFEST
+          if grep -q "version: 2" skills/experiment-workflow/SKILL.md; then
+            echo "  ✅ SKILL.md references MANIFEST v2"
+          else
+            echo "  ❌ SKILL.md does not reference MANIFEST v2" && exit 1
+          fi
+
+          # Check all commands have frontmatter
+          for cmd in commands/*.md; do
+            if head -1 "$cmd" | grep -q "^---"; then
+              echo "  ✅ $cmd has frontmatter"
+            else
+              echo "  ❌ $cmd missing frontmatter" && exit 1
+            fi
+          done
+
+      - name: Validate command cross-references
+        run: |
+          # Every command should reference /exp-init or be exp-init itself
+          for cmd in commands/exp-start.md commands/exp-status.md commands/exp-finalize.md commands/exp-milestone.md; do
+            if grep -q "exp-init" "$cmd"; then
+              echo "  ✅ $cmd references /exp-init"
+            else
+              echo "  ⚠️  $cmd does not reference /exp-init"
+            fi
+          done
+
+          # SKILL.md should list all commands
+          for name in exp-init exp-start exp-status exp-finalize exp-milestone; do
+            if grep -q "$name" skills/experiment-workflow/SKILL.md; then
+              echo "  ✅ SKILL.md references $name"
+            else
+              echo "  ❌ SKILL.md missing $name" && exit 1
+            fi
+          done
+
+  # ─────────────────────────────────────────────
+  # Job 2: E2E tests (requires gh auth + omc-* tools)
+  # ─────────────────────────────────────────────
+  e2e-test:
+    runs-on: ubuntu-latest
+    needs: validate
+    env:
+      GH_TOKEN: ${{ secrets.GH_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check GH_TOKEN
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "❌ GH_TOKEN secret not configured"
+            echo "Set GH_TOKEN in repo Settings > Secrets with repo + project scope"
+            exit 1
+          fi
+          echo "✅ GH_TOKEN available"
+
+      - name: Setup gh CLI
+        run: |
+          gh auth status
+          echo "✅ gh CLI authenticated"
+
+      - name: Install omc-* tools
+        run: |
+          mkdir -p "$HOME/bin"
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+
+          # Download omc tools from this repo's ci/ directory
+          for script in ci/omc-tools/*; do
+            if [ -f "$script" ]; then
+              cp "$script" "$HOME/bin/"
+              chmod +x "$HOME/bin/$(basename "$script")"
+            fi
+          done
+
+          # Verify installation
+          echo "Installed omc tools:"
+          ls -la "$HOME/bin"/omc-* 2>/dev/null || echo "No omc tools found"
+
+      - name: Run E2E tests
+        run: bash tests/e2e-test.sh --verbose
+
+      - name: Test summary
+        if: always()
+        run: |
+          echo "## E2E Test Results" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          bash tests/e2e-test.sh 2>&1 | tail -20 >> "$GITHUB_STEP_SUMMARY" || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"

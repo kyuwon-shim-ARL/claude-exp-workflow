@@ -1,0 +1,161 @@
+#!/bin/bash
+# ~/bin/omc-feature-start
+# Create Feature Issue with task checklist template
+# Usage: omc-feature-start [--type TYPE] "Feature Title" ["Task 1" "Task 2" ...]
+#
+# Options:
+#   --type TYPE   Issue type: feature (default), enhancement, refactor, chore
+#
+# Examples:
+#   omc-feature-start "Login Page Redesign" "Update button styles" "Add validation"
+#   omc-feature-start --type refactor "Auth Module Cleanup" "Extract helpers"
+
+set -e
+
+# Parse options
+ISSUE_TYPE="feature"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --type)
+      ISSUE_TYPE="$2"
+      shift 2
+      ;;
+    --type=*)
+      ISSUE_TYPE="${1#*=}"
+      shift
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
+
+TITLE="$1"
+shift
+TASKS=("$@")
+
+# Validate arguments
+if [ -z "$TITLE" ]; then
+  echo "Usage: omc-feature-start [--type TYPE] \"Feature Title\" [\"Task 1\" \"Task 2\" ...]"
+  echo ""
+  echo "Options:"
+  echo "  --type TYPE   Issue type: feature (default), enhancement, refactor, chore"
+  echo ""
+  echo "Examples:"
+  echo "  omc-feature-start \"Login Page Redesign\" \"Update button styles\" \"Add validation\""
+  echo "  omc-feature-start --type refactor \"Auth Module Cleanup\" \"Extract helpers\""
+  exit 1
+fi
+
+# Validate type
+case "$ISSUE_TYPE" in
+  feature|enhancement|refactor|chore)
+    ;;
+  *)
+    echo "Error: Invalid type '$ISSUE_TYPE'. Valid types: feature, enhancement, refactor, chore"
+    exit 1
+    ;;
+esac
+
+# Load configuration
+source ~/bin/omc-load-config 2>/dev/null || true
+REPO="${OMC_GH_REPO:-$(gh repo view --json nameWithOwner -q '.nameWithOwner' 2>/dev/null)}"
+MILESTONE="${OMC_CURRENT_MILESTONE:-}"
+
+if [ -z "$REPO" ]; then
+  echo "Error: Unable to determine repository. Set OMC_GH_REPO or run from a git repository."
+  exit 1
+fi
+
+# Build task checklist (handling empty tasks gracefully)
+TASK_LIST=""
+if [ ${#TASKS[@]} -gt 0 ]; then
+  for task in "${TASKS[@]}"; do
+    TASK_LIST+="- [ ] $task"$'\n'
+  done
+else
+  TASK_LIST="- [ ] Define implementation tasks"$'\n'
+fi
+
+# Build Issue body using heredoc (avoids sed escaping issues)
+BODY=$(cat <<EOF
+## Overview
+_Feature description here_
+
+## Tasks
+${TASK_LIST}
+## Acceptance Criteria
+- [ ] All tasks completed
+- [ ] Tests pass
+- [ ] Documentation updated
+
+---
+_Auto-created by OMC Feature Workflow_
+EOF
+)
+
+# Create Issue (with milestone if set)
+echo "Creating Issue..."
+if [ -n "$MILESTONE" ]; then
+  ISSUE_URL=$(gh issue create --repo "$REPO" \
+    --title "$TITLE" \
+    --body "$BODY" \
+    --milestone "$MILESTONE" \
+    --label "$ISSUE_TYPE" 2>&1)
+
+  if ! echo "$ISSUE_URL" | grep -q "https://github.com"; then
+    # Fallback: milestone not found
+    echo "Warning: Milestone '$MILESTONE' not found. Creating issue without milestone."
+    ISSUE_URL=$(gh issue create --repo "$REPO" \
+      --title "$TITLE" \
+      --body "$BODY" \
+      --label "$ISSUE_TYPE" 2>/dev/null)
+  fi
+else
+  ISSUE_URL=$(gh issue create --repo "$REPO" \
+    --title "$TITLE" \
+    --body "$BODY" \
+    --label "$ISSUE_TYPE" 2>/dev/null)
+fi
+
+ISSUE_NUM=$(echo "$ISSUE_URL" | grep -oE '[0-9]+$')
+
+if [ -z "$ISSUE_NUM" ]; then
+  echo "Error: Failed to create issue"
+  exit 1
+fi
+
+echo "Created Issue #$ISSUE_NUM"
+
+# Create workflow state
+mkdir -p .omc
+echo "{\"workflow\":\"feature\",\"issue_number\":$ISSUE_NUM,\"status\":\"AI Doing\",\"type\":\"$ISSUE_TYPE\"}" > .omc/workflow-state.json
+
+# Create feature branch
+BRANCH_NAME="feature-$ISSUE_NUM"
+if git rev-parse --verify "$BRANCH_NAME" >/dev/null 2>&1; then
+  echo "Branch $BRANCH_NAME already exists, checking out"
+  git checkout "$BRANCH_NAME" 2>/dev/null || true
+else
+  git checkout -b "$BRANCH_NAME" 2>/dev/null || true
+  echo "Created branch: $BRANCH_NAME"
+fi
+
+# Add to GitHub Project
+if [ -n "$OMC_PROJECT_NUMBER" ]; then
+  echo "Adding to Project..."
+  gh project item-add "$OMC_PROJECT_NUMBER" --owner "${OMC_PROJECT_OWNER:-@me}" \
+    --url "https://github.com/$REPO/issues/$ISSUE_NUM" 2>/dev/null || true
+fi
+
+# Update status to AI Doing
+if [ -n "$OMC_STATUS_AI_DOING" ]; then
+  omc_update_status "$ISSUE_NUM" "$OMC_STATUS_AI_DOING" 2>/dev/null || true
+fi
+
+echo ""
+echo "=========================================="
+echo "Feature Issue #$ISSUE_NUM created"
+echo "Branch: $BRANCH_NAME"
+echo "URL: https://github.com/$REPO/issues/$ISSUE_NUM"
+echo "=========================================="

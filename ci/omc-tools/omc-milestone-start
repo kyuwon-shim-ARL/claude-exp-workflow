@@ -1,0 +1,76 @@
+#!/bin/bash
+# ~/bin/omc-milestone-start
+# Create or activate a milestone
+# Usage: omc-milestone-start <title> [description] [due-date]
+
+set -e
+
+MILESTONE_TITLE="$1"
+DESCRIPTION="${2:-}"
+DUE_DATE="${3:-}"
+
+if [ -z "$MILESTONE_TITLE" ]; then
+  echo "Usage: omc-milestone-start <title> [description] [due-date]"
+  echo "Example: omc-milestone-start 'v1.0-auth' 'Authentication system' '2026-03-01'"
+  exit 1
+fi
+
+# Validate special characters
+ESCAPED_TITLE=$(printf '%s' "$MILESTONE_TITLE" | sed 's/"/\\"/g')
+
+# Validate date format (YYYY-MM-DD)
+if [ -n "$DUE_DATE" ]; then
+  if ! echo "$DUE_DATE" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'; then
+    echo "Error: Due date must be in YYYY-MM-DD format"
+    exit 1
+  fi
+fi
+
+# Load configuration
+source ~/bin/omc-load-config 2>/dev/null || true
+REPO="${OMC_GH_REPO:-$(gh repo view --json nameWithOwner -q '.nameWithOwner' 2>/dev/null)}"
+
+if [ -z "$REPO" ]; then
+  echo "Error: Unable to determine repository. Set OMC_GH_REPO or run from a git repository."
+  exit 1
+fi
+
+# Check if milestone already exists
+EXISTING=$(gh api "repos/$REPO/milestones" --jq ".[] | select(.title == \"$ESCAPED_TITLE\") | .number" 2>/dev/null || echo "")
+
+if [ -n "$EXISTING" ]; then
+  echo "Milestone '$MILESTONE_TITLE' already exists (#$EXISTING)"
+  MILESTONE_NUM="$EXISTING"
+else
+  # Create new milestone
+  if [ -n "$DUE_DATE" ]; then
+    MILESTONE_NUM=$(gh api "repos/$REPO/milestones" \
+      --method POST \
+      -f title="$MILESTONE_TITLE" \
+      -f description="$DESCRIPTION" \
+      -f due_on="${DUE_DATE}T00:00:00Z" \
+      --jq '.number' 2>/dev/null)
+  else
+    MILESTONE_NUM=$(gh api "repos/$REPO/milestones" \
+      --method POST \
+      -f title="$MILESTONE_TITLE" \
+      -f description="$DESCRIPTION" \
+      --jq '.number' 2>/dev/null)
+  fi
+  echo "Created milestone '$MILESTONE_TITLE' (#$MILESTONE_NUM)"
+fi
+
+# Update project-specific config file
+CONFIG_FILE=".omc-config.sh"
+if [ -f "$CONFIG_FILE" ]; then
+  if grep -q "^export OMC_CURRENT_MILESTONE=" "$CONFIG_FILE"; then
+    sed -i "s/^export OMC_CURRENT_MILESTONE=.*/export OMC_CURRENT_MILESTONE=\"$MILESTONE_TITLE\"/" "$CONFIG_FILE"
+  else
+    echo "export OMC_CURRENT_MILESTONE=\"$MILESTONE_TITLE\"" >> "$CONFIG_FILE"
+  fi
+else
+  echo "export OMC_CURRENT_MILESTONE=\"$MILESTONE_TITLE\"" > "$CONFIG_FILE"
+fi
+
+echo "Active milestone set to: $MILESTONE_TITLE"
+echo "All new issues will be automatically assigned to this milestone."

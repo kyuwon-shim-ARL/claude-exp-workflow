@@ -1,0 +1,83 @@
+#!/bin/bash
+# ~/bin/omc-load-config
+# Configuration loader for OMC GitHub workflow scripts
+# Usage: source ~/bin/omc-load-config
+
+# Load configuration from project-specific .omc-config.sh
+omc_load_config() {
+  local config_file="${1:-.omc-config.sh}"
+
+  if [ -f "$config_file" ]; then
+    source "$config_file"
+  else
+    echo "Warning: Config file not found: $config_file" >&2
+    echo "Run 'omc-setup' to create configuration" >&2
+    return 1
+  fi
+}
+
+# Issue number to project item ID lookup
+omc_get_item_id() {
+  local issue_num=$1
+  local owner="${OMC_PROJECT_OWNER:-@me}"
+
+  gh project item-list "$OMC_PROJECT_NUMBER" \
+    --owner "$owner" \
+    --format json 2>/dev/null | \
+    jq -r --arg num "$issue_num" '.items[] | select(.content.number == ($num | tonumber)) | .id'
+}
+
+# Get project ID
+omc_get_project_id() {
+  local owner="${OMC_PROJECT_OWNER:-@me}"
+
+  gh project view "$OMC_PROJECT_NUMBER" \
+    --owner "$owner" \
+    --format json 2>/dev/null | jq -r '.id'
+}
+
+# Update issue status in GitHub Project
+omc_update_status() {
+  local issue_num=$1
+  local status_option_id=$2
+
+  local item_id=$(omc_get_item_id "$issue_num")
+  local project_id=$(omc_get_project_id)
+
+  if [ -z "$item_id" ] || [ "$item_id" = "null" ]; then
+    echo "Error: Issue #$issue_num is not in the project" >&2
+    return 1
+  fi
+
+  gh project item-edit \
+    --project-id "$project_id" \
+    --id "$item_id" \
+    --field-id "$OMC_STATUS_FIELD_ID" \
+    --single-select-option-id "$status_option_id" 2>/dev/null
+
+  echo "Updated Issue #$issue_num status"
+}
+
+# Default configuration (can be overridden by .omc-config.sh)
+export OMC_PROJECT_NUMBER="${OMC_PROJECT_NUMBER:-}"
+export OMC_PROJECT_OWNER="${OMC_PROJECT_OWNER:-@me}"
+export OMC_GH_REPO="${OMC_GH_REPO:-}"
+
+# Status field IDs (must be set in .omc-config.sh)
+export OMC_STATUS_FIELD_ID="${OMC_STATUS_FIELD_ID:-}"
+export OMC_STATUS_BACKLOG="${OMC_STATUS_BACKLOG:-}"
+export OMC_STATUS_PLANNING="${OMC_STATUS_PLANNING:-}"
+export OMC_STATUS_SPEC_READY="${OMC_STATUS_SPEC_READY:-}"
+export OMC_STATUS_AI_DOING="${OMC_STATUS_AI_DOING:-}"
+export OMC_STATUS_HUMAN_REVIEW="${OMC_STATUS_HUMAN_REVIEW:-}"
+export OMC_STATUS_QA="${OMC_STATUS_QA:-}"
+export OMC_STATUS_DONE="${OMC_STATUS_DONE:-}"
+
+# Milestone configuration (Section 13)
+export OMC_CURRENT_MILESTONE="${OMC_CURRENT_MILESTONE:-}"
+export OMC_MILESTONE_AUTO_ASSIGN="${OMC_MILESTONE_AUTO_ASSIGN:-true}"
+
+# Load project-specific configuration if exists
+if [ -f ".omc-config.sh" ]; then
+  source ".omc-config.sh"
+fi
