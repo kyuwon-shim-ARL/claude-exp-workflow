@@ -1011,6 +1011,220 @@ PYEOF
 }
 
 # ---------------------------------------------------------------------------
+# H. Foundation Tests (10 tests)
+# ---------------------------------------------------------------------------
+test_foundation() {
+  log_section "H. Foundation Flow (10 tests)"
+
+  cd "$TMPDIR"
+  source .omc-config.sh
+
+  # H1. MANIFEST v3 migration: add foundations block
+  if command -v python3 >/dev/null 2>&1; then
+    python3 << PYEOF
+import yaml
+with open('outputs/MANIFEST.yaml') as f:
+    data = yaml.safe_load(f)
+data['version'] = 3
+data['foundations'] = {}
+data['updated'] = '$(date -u +%Y-%m-%dT%H:%M:%SZ)'
+with open('outputs/MANIFEST.yaml', 'w') as f:
+    yaml.dump(data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+PYEOF
+  else
+    sed -i 's/^version: 2/version: 3/' outputs/MANIFEST.yaml
+    sed -i '/^milestone:/i foundations: {}' outputs/MANIFEST.yaml
+  fi
+
+  assert_file_contains outputs/MANIFEST.yaml "version: 3" \
+    "H1. MANIFEST migrated to version 3"
+
+  # H2. Foundation start: create v1
+  local now_iso
+  now_iso="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  if command -v python3 >/dev/null 2>&1; then
+    python3 << PYEOF
+import yaml
+with open('outputs/MANIFEST.yaml') as f:
+    data = yaml.safe_load(f)
+data['updated'] = '${now_iso}'
+data['foundations']['v1'] = {
+    'description': '${TEST_PREFIX} initial pipeline',
+    'components': {'labels': 'cleanlab', 'cv': '5fold'},
+    'status': 'current',
+    'created': '${now_iso}'
+}
+with open('outputs/MANIFEST.yaml', 'w') as f:
+    yaml.dump(data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+PYEOF
+  fi
+
+  assert_file_contains outputs/MANIFEST.yaml "status: current" \
+    "H2. Foundation v1 created with status: current"
+
+  # H3. Foundation components are free-form key-value
+  assert_file_contains outputs/MANIFEST.yaml "labels: cleanlab" \
+    "H3. Foundation components stored as free-form key-value"
+
+  # H4. Experiment auto-links to current foundation
+  if command -v python3 >/dev/null 2>&1; then
+    python3 << PYEOF
+import yaml
+with open('outputs/MANIFEST.yaml') as f:
+    data = yaml.safe_load(f)
+# Find current foundation
+current_foundation = None
+for fv, fdata in data.get('foundations', {}).items():
+    if fdata.get('status') == 'current':
+        current_foundation = fv
+        break
+# Create e004 linked to current foundation
+data['updated'] = '$(date -u +%Y-%m-%dT%H:%M:%SZ)'
+data['experiments']['e004'] = {
+    'path': 'outputs/e004/',
+    'script': '',
+    'params': {},
+    'outputs': [],
+    'status': 'experimental',
+    'description': '${TEST_PREFIX} foundation-linked experiment',
+    'issue': 0,
+    'branch': 'feature-0',
+    'foundation': current_foundation,
+    'stale': False
+}
+with open('outputs/MANIFEST.yaml', 'w') as f:
+    yaml.dump(data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+PYEOF
+  fi
+
+  mkdir -p outputs/e004
+  assert_file_contains outputs/MANIFEST.yaml "foundation: v1" \
+    "H4. Experiment e004 auto-linked to current foundation v1"
+
+  # H5. New experiment has stale: false
+  assert_file_contains outputs/MANIFEST.yaml "stale: false" \
+    "H5. New experiment has stale: false"
+
+  # H6. Foundation upgrade: v1 → v2 (old becomes stale)
+  if command -v python3 >/dev/null 2>&1; then
+    python3 << PYEOF
+import yaml
+with open('outputs/MANIFEST.yaml') as f:
+    data = yaml.safe_load(f)
+now = '$(date -u +%Y-%m-%dT%H:%M:%SZ)'
+data['updated'] = now
+# Mark v1 as stale
+data['foundations']['v1']['status'] = 'stale'
+# Create v2 as current
+data['foundations']['v2'] = {
+    'description': '${TEST_PREFIX} upgraded pipeline',
+    'components': {'labels': 'nested_cleanlab', 'cv': 'nested_5fold'},
+    'status': 'current',
+    'created': now
+}
+# Mark v1 experiments as stale
+for eid, edata in data.get('experiments', {}).items():
+    if edata.get('foundation') == 'v1' and edata.get('status') in ('final', 'experimental'):
+        edata['stale'] = True
+with open('outputs/MANIFEST.yaml', 'w') as f:
+    yaml.dump(data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+PYEOF
+  fi
+
+  # Check v1 is now stale
+  local v1_status
+  v1_status=$(python3 -c "
+import yaml
+with open('outputs/MANIFEST.yaml') as f:
+    data = yaml.safe_load(f)
+print(data['foundations']['v1']['status'])
+" 2>/dev/null || echo "unknown")
+  if [ "$v1_status" = "stale" ]; then
+    log_pass "H6. Foundation v1 marked as stale after upgrade"
+  else
+    log_fail "H6. Foundation v1 marked as stale after upgrade" "Status: $v1_status"
+  fi
+
+  # H7. v2 is current after upgrade
+  local v2_status
+  v2_status=$(python3 -c "
+import yaml
+with open('outputs/MANIFEST.yaml') as f:
+    data = yaml.safe_load(f)
+print(data['foundations']['v2']['status'])
+" 2>/dev/null || echo "unknown")
+  if [ "$v2_status" = "current" ]; then
+    log_pass "H7. Foundation v2 has status: current after upgrade"
+  else
+    log_fail "H7. Foundation v2 has status: current after upgrade" "Status: $v2_status"
+  fi
+
+  # H8. Downstream experiments marked stale after upgrade
+  local e004_stale
+  e004_stale=$(python3 -c "
+import yaml
+with open('outputs/MANIFEST.yaml') as f:
+    data = yaml.safe_load(f)
+print(data['experiments']['e004'].get('stale', False))
+" 2>/dev/null || echo "unknown")
+  if [ "$e004_stale" = "True" ]; then
+    log_pass "H8. Downstream experiment e004 marked stale after foundation upgrade"
+  else
+    log_fail "H8. Downstream experiment e004 marked stale" "stale: $e004_stale"
+  fi
+
+  # H9. Deprecated experiments NOT marked stale (only final/experimental)
+  local e002_stale
+  e002_stale=$(python3 -c "
+import yaml
+with open('outputs/MANIFEST.yaml') as f:
+    data = yaml.safe_load(f)
+e002 = data['experiments'].get('e002', {})
+print(e002.get('stale', 'NO_STALE_FIELD'))
+" 2>/dev/null || echo "unknown")
+  # e002 is deprecated and has no foundation field, so stale should not be set
+  if [ "$e002_stale" = "NO_STALE_FIELD" ] || [ "$e002_stale" = "False" ]; then
+    log_pass "H9. Deprecated experiment e002 not affected by foundation upgrade"
+  else
+    log_fail "H9. Deprecated experiment e002 not affected" "stale: $e002_stale"
+  fi
+
+  # H10. Experiment without foundation field unaffected (legacy/pre-foundation)
+  local e001_stale
+  e001_stale=$(python3 -c "
+import yaml
+with open('outputs/MANIFEST.yaml') as f:
+    data = yaml.safe_load(f)
+e001 = data['experiments'].get('e001', {})
+print(e001.get('stale', 'NO_STALE_FIELD'))
+" 2>/dev/null || echo "unknown")
+  # e001 has no foundation field (created before foundation system), should be unaffected
+  if [ "$e001_stale" = "NO_STALE_FIELD" ] || [ "$e001_stale" = "False" ]; then
+    log_pass "H10. Legacy experiment e001 (no foundation) unaffected by upgrade"
+  else
+    log_fail "H10. Legacy experiment e001 unaffected" "stale: $e001_stale"
+  fi
+
+  # Append foundation log entries
+  local today
+  today="$(date +%Y-%m-%d)"
+  cat >> experiment-log.md << EOF
+
+## ${today}: Foundation v1 started
+- **Description**: ${TEST_PREFIX} initial pipeline
+- **Status**: current
+
+## ${today}: Foundation upgraded v1 → v2
+- **Description**: ${TEST_PREFIX} upgraded pipeline
+- **Stale experiments**: e004 (1 total)
+- **Previous foundation**: v1 (now stale)
+EOF
+
+  assert_file_contains experiment-log.md "Foundation v1 started" \
+    "H10b. experiment-log.md records foundation start (bonus check)"
+}
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 print_summary() {
@@ -1054,6 +1268,7 @@ main() {
   test_edge_cases
   test_deprecation
   test_milestone
+  test_foundation
 
   print_summary
 

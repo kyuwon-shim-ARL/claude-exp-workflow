@@ -45,6 +45,15 @@ experiments:
   e005:
     status: final                    # experimental → final
     updated: "2026-02-16T10:00:00Z"  # ISO 8601 format
+    # foundation and stale fields are preserved as-is from experiment entry
+```
+
+**Stale Warning (v3 MANIFEST only):**
+If the experiment has `stale: true`, display a warning before finalization:
+```
+Warning: e005 is marked stale (foundation v1 is no longer current).
+Finalizing a stale experiment means its results may not reflect the latest pipeline.
+Proceed anyway? [Y/n]
 ```
 
 **Deprecation:**
