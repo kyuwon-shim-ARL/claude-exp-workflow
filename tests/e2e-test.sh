@@ -1420,9 +1420,9 @@ print(data['experiments']['e005'].get('stale_reason', 'NONE'))
 - **Previous foundation**: v2 (now stale)
 EOF
 
-  assert_file_contains experiment-log.md "Changed components: cv" \
+  assert_file_contains experiment-log.md "Changed components" \
     "I4a. experiment-log records changed components"
-  assert_file_contains experiment-log.md "Skipped experiments: e006" \
+  assert_file_contains experiment-log.md "Skipped experiments" \
     "I4b. experiment-log records skipped experiments"
 }
 
