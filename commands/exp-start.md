@@ -48,6 +48,11 @@ Add new experiment entry and update root timestamp in `outputs/MANIFEST.yaml`.
 2. 없으면 → MANIFEST `milestone.title` 사용
 3. 둘 다 없으면 → milestone 필드 생략
 
+**Foundation auto-linking (v3 MANIFEST only):**
+1. MANIFEST `foundations` 블록에서 `status: current`인 foundation 찾기
+2. 있으면 → experiment에 `foundation` 필드 자동 추가 + `stale: false`
+3. 없으면 → foundation/stale 필드 생략 (v2 호환)
+
 ```yaml
 updated: "YYYY-MM-DDTHH:MM:SSZ"  # root updated: refresh on every change
 experiments:
@@ -61,6 +66,8 @@ experiments:
     issue: {issue_number}
     branch: {branch_name}
     milestone: "{milestone_title}"  # resolved from --milestone flag or MANIFEST, omit if none
+    foundation: "v1"               # auto-linked from current foundation (v3 only, omit if none)
+    stale: false                   # false for new experiments (v3 only, omit if no foundation)
 ```
 
 Handle cases:

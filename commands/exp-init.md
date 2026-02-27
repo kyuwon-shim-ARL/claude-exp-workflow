@@ -83,13 +83,16 @@ export OMC_CURRENT_MILESTONE=""
 
 ### 7. outputs/MANIFEST.yaml 생성
 ```yaml
-version: 2
+version: 3
 updated: "YYYY-MM-DDTHH:MM:SSZ"
 scan_paths:
   - outputs/
+foundations: {}
 milestone: {}
 experiments: {}
 ```
+
+**Backwards Compatibility**: version 1 and version 2 MANIFESTs are fully supported. Missing `foundations` block is treated as "no foundations". The `foundations` block is purely additive.
 
 ### 8. (Optional) 첫 마일스톤 생성
 ```bash

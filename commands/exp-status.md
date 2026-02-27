@@ -46,24 +46,30 @@ For each experiment in MANIFEST:
 ```
 Experiment Status Dashboard
 
+Foundation: v2 (current) - "Nested CV + Y-randomization"
+  v1 (stale): 3 experiments (2 stale, 1 deprecated)
+
 Milestone: v1.0-foundation (active)
   GitHub Progress: [########....] 50% (2/4 issues)
 
 Experiments [v1.0-foundation]:
-  ID     | Title               | Status       | Tasks | Issue
-  e001   | Baseline Scoring    | final        | 4/4   | #1
-  e002   | Feature Selection   | final        | 3/3   | #5
-  e003   | DEG Analysis        | experimental | 2/4   | #8
+  ID     | Title               | Status       | Stale | Tasks | Issue
+  e001   | Baseline Scoring    | final        |       | 4/4   | #1
+  e002   | Feature Selection   | final        | stale | 3/3   | #5
+  e003   | DEG Analysis        | experimental |       | 2/4   | #8
 
 Experiments [no milestone]:
-  ID     | Title               | Status       | Tasks | Issue
-  e004   | Biomarker Discovery | experimental | 0/3   | #12
-  e005   | Legacy Method       | deprecated   | 2/2   | #15
+  ID     | Title               | Status       | Stale | Tasks | Issue
+  e004   | Biomarker Discovery | experimental |       | 0/3   | #12
+  e005   | Legacy Method       | deprecated   |       | 2/2   | #15
 
-MANIFEST: 5 experiments (2 final, 2 experimental, 1 deprecated)
+MANIFEST: 5 experiments (2 final, 2 experimental, 1 deprecated, 1 stale)
 
 Next: /exp-start e004 or /ralplan for e003 or /exp-finalize for completed
 ```
+
+**Foundation Info (v3 MANIFEST only):**
+If `foundations` block exists, show current foundation and stale experiment count at the top of the dashboard. The "Stale" column only appears when at least one experiment has `stale: true`.
 
 If no active milestone in MANIFEST, show all experiments without grouping (backwards compatible).
 

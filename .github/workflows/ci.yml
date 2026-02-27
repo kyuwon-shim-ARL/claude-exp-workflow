@@ -38,6 +38,7 @@ jobs:
             "commands/exp-status.md"
             "commands/exp-finalize.md"
             "commands/exp-milestone.md"
+            "commands/exp-foundation.md"
             "skills/experiment-workflow/SKILL.md"
             "tests/e2e-test.sh"
           )
@@ -54,11 +55,11 @@ jobs:
           PLUGIN_VER=$(python3 -c "import json; print(json.load(open('.claude-plugin/plugin.json'))['version'])")
           echo "plugin.json version: $PLUGIN_VER"
 
-          # Check SKILL.md references version 2 MANIFEST
-          if grep -q "version: 2" skills/experiment-workflow/SKILL.md; then
-            echo "  ✅ SKILL.md references MANIFEST v2"
+          # Check SKILL.md references current MANIFEST version
+          if grep -q "version: 3" skills/experiment-workflow/SKILL.md; then
+            echo "  ✅ SKILL.md references MANIFEST v3"
           else
-            echo "  ❌ SKILL.md does not reference MANIFEST v2" && exit 1
+            echo "  ❌ SKILL.md does not reference MANIFEST v3" && exit 1
           fi
 
           # Check all commands have frontmatter
@@ -73,7 +74,7 @@ jobs:
       - name: Validate command cross-references
         run: |
           # Every command should reference /exp-init or be exp-init itself
-          for cmd in commands/exp-start.md commands/exp-status.md commands/exp-finalize.md commands/exp-milestone.md; do
+          for cmd in commands/exp-start.md commands/exp-status.md commands/exp-finalize.md commands/exp-milestone.md commands/exp-foundation.md; do
             if grep -q "exp-init" "$cmd"; then
               echo "  ✅ $cmd references /exp-init"
             else
@@ -82,7 +83,7 @@ jobs:
           done
 
           # SKILL.md should list all commands
-          for name in exp-init exp-start exp-status exp-finalize exp-milestone; do
+          for name in exp-init exp-start exp-status exp-finalize exp-milestone exp-foundation; do
             if grep -q "$name" skills/experiment-workflow/SKILL.md; then
               echo "  ✅ SKILL.md references $name"
             else

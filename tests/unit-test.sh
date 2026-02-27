@@ -1020,6 +1020,216 @@ export OMC_MILESTONE_AUTO_ASSIGN="true"
 CONF
 }
 
+# ===========================================================================
+# G. MANIFEST v3 Foundation Logic Tests (6 tests)
+# ===========================================================================
+test_manifest_v3_foundation() {
+  log_section "G. MANIFEST v3 Foundation Logic (6 tests)"
+
+  cd "$TMPDIR"
+
+  # Create a v3 MANIFEST with foundations
+  mkdir -p outputs
+  cat > outputs/MANIFEST.yaml << 'MANIFEST_V3'
+version: 3
+updated: "2026-02-27T00:00:00Z"
+scan_paths:
+  - outputs/
+foundations:
+  v1:
+    description: "Initial pipeline"
+    components:
+      labels: cleanlab
+      cv: 5fold
+    status: current
+    created: "2026-02-01T00:00:00Z"
+milestone: {}
+experiments:
+  e001:
+    path: outputs/e001/
+    script: ""
+    params: {}
+    outputs: []
+    status: final
+    description: "Test experiment"
+    issue: 1
+    branch: feature-1
+    foundation: v1
+    stale: false
+MANIFEST_V3
+
+  # G1. v3 MANIFEST is valid YAML with foundations block
+  if command -v python3 >/dev/null 2>&1; then
+    local yaml_check
+    yaml_check=$(python3 -c "
+import yaml
+with open('outputs/MANIFEST.yaml') as f:
+    data = yaml.safe_load(f)
+assert data['version'] == 3
+assert 'foundations' in data
+assert 'v1' in data['foundations']
+print('VALID')
+" 2>&1)
+    if [ "$yaml_check" = "VALID" ]; then
+      log_pass "G1. v3 MANIFEST is valid YAML with foundations block"
+    else
+      log_fail "G1. v3 MANIFEST is valid YAML" "$yaml_check"
+    fi
+  else
+    assert_file_contains outputs/MANIFEST.yaml "version: 3" \
+      "G1. v3 MANIFEST has version: 3 (basic check)"
+  fi
+
+  # G2. Foundation has required fields (description, components, status, created)
+  if command -v python3 >/dev/null 2>&1; then
+    local fields_check
+    fields_check=$(python3 -c "
+import yaml
+with open('outputs/MANIFEST.yaml') as f:
+    data = yaml.safe_load(f)
+v1 = data['foundations']['v1']
+required = ['description', 'components', 'status', 'created']
+missing = [f for f in required if f not in v1]
+if not missing:
+    print('ALL_PRESENT')
+else:
+    print(f'MISSING: {missing}')
+" 2>&1)
+    if [ "$fields_check" = "ALL_PRESENT" ]; then
+      log_pass "G2. Foundation v1 has all required fields"
+    else
+      log_fail "G2. Foundation v1 has all required fields" "$fields_check"
+    fi
+  else
+    log_skip "G2. Foundation required fields (python3 not available)"
+  fi
+
+  # G3. Experiment links to foundation correctly
+  if command -v python3 >/dev/null 2>&1; then
+    local link_check
+    link_check=$(python3 -c "
+import yaml
+with open('outputs/MANIFEST.yaml') as f:
+    data = yaml.safe_load(f)
+e001 = data['experiments']['e001']
+assert e001.get('foundation') == 'v1', f'foundation={e001.get(\"foundation\")}'
+assert e001.get('stale') == False, f'stale={e001.get(\"stale\")}'
+print('LINKED')
+" 2>&1)
+    if [ "$link_check" = "LINKED" ]; then
+      log_pass "G3. Experiment e001 linked to foundation v1 with stale: false"
+    else
+      log_fail "G3. Experiment linked to foundation" "$link_check"
+    fi
+  else
+    log_skip "G3. Experiment foundation linking (python3 not available)"
+  fi
+
+  # G4. Foundation upgrade marks old foundation stale
+  if command -v python3 >/dev/null 2>&1; then
+    python3 << 'PYEOF'
+import yaml
+with open('outputs/MANIFEST.yaml') as f:
+    data = yaml.safe_load(f)
+# Simulate upgrade: v1 → stale, add v2 → current
+data['foundations']['v1']['status'] = 'stale'
+data['foundations']['v2'] = {
+    'description': 'Upgraded pipeline',
+    'components': {'labels': 'nested_cleanlab', 'cv': 'nested_5fold'},
+    'status': 'current',
+    'created': '2026-02-27T00:00:00Z'
+}
+with open('outputs/MANIFEST.yaml', 'w') as f:
+    yaml.dump(data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+PYEOF
+    local v1_status
+    v1_status=$(python3 -c "
+import yaml
+with open('outputs/MANIFEST.yaml') as f:
+    data = yaml.safe_load(f)
+print(data['foundations']['v1']['status'])
+")
+    if [ "$v1_status" = "stale" ]; then
+      log_pass "G4. Foundation upgrade marks old v1 as stale"
+    else
+      log_fail "G4. Foundation upgrade marks old as stale" "v1 status: $v1_status"
+    fi
+  else
+    log_skip "G4. Foundation upgrade (python3 not available)"
+  fi
+
+  # G5. Stale propagation to downstream experiments
+  if command -v python3 >/dev/null 2>&1; then
+    python3 << 'PYEOF'
+import yaml
+with open('outputs/MANIFEST.yaml') as f:
+    data = yaml.safe_load(f)
+# Mark experiments on stale foundation as stale
+for eid, edata in data['experiments'].items():
+    if edata.get('foundation') == 'v1' and edata.get('status') in ('final', 'experimental'):
+        edata['stale'] = True
+with open('outputs/MANIFEST.yaml', 'w') as f:
+    yaml.dump(data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+PYEOF
+    local e001_stale
+    e001_stale=$(python3 -c "
+import yaml
+with open('outputs/MANIFEST.yaml') as f:
+    data = yaml.safe_load(f)
+print(data['experiments']['e001'].get('stale', False))
+")
+    if [ "$e001_stale" = "True" ]; then
+      log_pass "G5. Stale propagated to experiment e001 (foundation v1)"
+    else
+      log_fail "G5. Stale propagation to experiment" "e001 stale: $e001_stale"
+    fi
+  else
+    log_skip "G5. Stale propagation (python3 not available)"
+  fi
+
+  # G6. Backwards compatibility: v2 MANIFEST without foundations still valid
+  cat > outputs/MANIFEST_v2.yaml << 'MANIFEST_V2'
+version: 2
+updated: "2026-02-27T00:00:00Z"
+scan_paths:
+  - outputs/
+milestone: {}
+experiments:
+  e001:
+    path: outputs/e001/
+    status: final
+    description: "Legacy experiment"
+MANIFEST_V2
+
+  if command -v python3 >/dev/null 2>&1; then
+    local compat_check
+    compat_check=$(python3 -c "
+import yaml
+with open('outputs/MANIFEST_v2.yaml') as f:
+    data = yaml.safe_load(f)
+# No foundations block - should be handled gracefully
+foundations = data.get('foundations', {})
+e001 = data['experiments']['e001']
+stale = e001.get('stale', False)
+foundation = e001.get('foundation', None)
+assert foundations == {}, f'foundations={foundations}'
+assert stale == False, f'stale={stale}'
+assert foundation is None, f'foundation={foundation}'
+print('COMPATIBLE')
+" 2>&1)
+    if [ "$compat_check" = "COMPATIBLE" ]; then
+      log_pass "G6. v2 MANIFEST without foundations is backwards compatible"
+    else
+      log_fail "G6. v2 MANIFEST backwards compatibility" "$compat_check"
+    fi
+  else
+    assert_file_not_contains outputs/MANIFEST_v2.yaml "foundations" \
+      "G6. v2 MANIFEST has no foundations block (basic check)"
+  fi
+
+  rm -f outputs/MANIFEST_v2.yaml
+}
+
 # ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
@@ -1062,6 +1272,7 @@ main() {
   test_milestone_start
   test_milestone_status
   test_milestone_end
+  test_manifest_v3_foundation
 
   print_summary
 
