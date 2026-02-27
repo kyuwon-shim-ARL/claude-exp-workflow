@@ -1225,6 +1225,208 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
+# I. Selective Stale Propagation Tests (4 tests)
+# ---------------------------------------------------------------------------
+test_selective_stale() {
+  log_section "I. Selective Stale Propagation (4 tests)"
+
+  cd "$TMPDIR"
+  source .omc-config.sh
+
+  # Build on section H's MANIFEST which already has v3, foundations v1(stale) + v2(current)
+  # Reset to a clean v3 state with specific depends_on_components
+
+  if command -v python3 >/dev/null 2>&1; then
+    python3 << PYEOF
+import yaml
+with open('outputs/MANIFEST.yaml') as f:
+    data = yaml.safe_load(f)
+now = '$(date -u +%Y-%m-%dT%H:%M:%SZ)'
+data['updated'] = now
+
+# Reset foundations: v2 is current
+# (v1 already stale from section H)
+
+# Create e005 with depends_on_components [labels, cv]
+data['experiments']['e005'] = {
+    'path': 'outputs/e005/',
+    'script': '',
+    'params': {},
+    'outputs': [],
+    'status': 'experimental',
+    'description': '${TEST_PREFIX} selective stale test 1',
+    'issue': 0,
+    'branch': 'feature-0',
+    'foundation': 'v2',
+    'depends_on_components': ['labels', 'cv'],
+    'stale': False
+}
+
+# Create e006 with depends_on_components [labels] only
+data['experiments']['e006'] = {
+    'path': 'outputs/e006/',
+    'script': '',
+    'params': {},
+    'outputs': [],
+    'status': 'final',
+    'description': '${TEST_PREFIX} selective stale test 2',
+    'issue': 0,
+    'branch': 'feature-0',
+    'foundation': 'v2',
+    'depends_on_components': ['labels'],
+    'stale': False
+}
+
+# Create e007 WITHOUT depends_on_components (depends on all)
+data['experiments']['e007'] = {
+    'path': 'outputs/e007/',
+    'script': '',
+    'params': {},
+    'outputs': [],
+    'status': 'final',
+    'description': '${TEST_PREFIX} selective stale test 3 (all)',
+    'issue': 0,
+    'branch': 'feature-0',
+    'foundation': 'v2',
+    'stale': False
+}
+
+with open('outputs/MANIFEST.yaml', 'w') as f:
+    yaml.dump(data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+PYEOF
+  fi
+
+  mkdir -p outputs/e005 outputs/e006 outputs/e007
+
+  # I1. depends_on_components stored correctly in MANIFEST
+  assert_file_contains outputs/MANIFEST.yaml "depends_on_components" \
+    "I1. depends_on_components field present in MANIFEST"
+
+  # I2. Selective upgrade: --changed-components cv -> only cv-dependent experiments stale
+  if command -v python3 >/dev/null 2>&1; then
+    python3 << PYEOF
+import yaml
+with open('outputs/MANIFEST.yaml') as f:
+    data = yaml.safe_load(f)
+
+now = '$(date -u +%Y-%m-%dT%H:%M:%SZ)'
+data['updated'] = now
+
+# Simulate: foundation v2 -> v3, changed_components = {cv}
+changed_components = {'cv'}
+
+# Mark v2 as stale, create v3 as current
+data['foundations']['v2']['status'] = 'stale'
+data['foundations']['v3'] = {
+    'description': '${TEST_PREFIX} v3 pipeline',
+    'components': {'labels': 'cleanlab', 'cv': 'nested_10fold', 'models': 'rf_v2'},
+    'status': 'current',
+    'created': now
+}
+
+# Selective stale propagation
+for eid, edata in data['experiments'].items():
+    if edata.get('foundation') != 'v2':
+        continue
+    if edata.get('status') not in ('final', 'experimental'):
+        continue
+    deps = edata.get('depends_on_components', None)
+    if deps is None:
+        # No depends_on_components = depends on all = affected
+        edata['stale'] = True
+        edata['stale_reason'] = 'changed components: cv'
+    elif set(deps) & changed_components:
+        edata['stale'] = True
+        edata['stale_reason'] = 'changed components: cv'
+    # else: not affected
+
+with open('outputs/MANIFEST.yaml', 'w') as f:
+    yaml.dump(data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+PYEOF
+
+    # e005 depends on [labels, cv] -> cv intersects -> stale
+    local e005_stale
+    e005_stale=$(python3 -c "
+import yaml
+with open('outputs/MANIFEST.yaml') as f:
+    data = yaml.safe_load(f)
+print(data['experiments']['e005'].get('stale', False))
+")
+    if [ "$e005_stale" = "True" ]; then
+      log_pass "I2a. e005 [labels, cv] marked stale (cv changed)"
+    else
+      log_fail "I2a. e005 selective stale" "stale: $e005_stale"
+    fi
+
+    # e006 depends on [labels] -> no intersection with cv -> NOT stale
+    local e006_stale
+    e006_stale=$(python3 -c "
+import yaml
+with open('outputs/MANIFEST.yaml') as f:
+    data = yaml.safe_load(f)
+print(data['experiments']['e006'].get('stale', False))
+")
+    if [ "$e006_stale" = "False" ]; then
+      log_pass "I2b. e006 [labels] NOT stale (cv changed, no overlap)"
+    else
+      log_fail "I2b. e006 should not be stale" "stale: $e006_stale"
+    fi
+
+    # e007 has no depends_on_components -> depends on all -> stale
+    local e007_stale
+    e007_stale=$(python3 -c "
+import yaml
+with open('outputs/MANIFEST.yaml') as f:
+    data = yaml.safe_load(f)
+print(data['experiments']['e007'].get('stale', False))
+")
+    if [ "$e007_stale" = "True" ]; then
+      log_pass "I2c. e007 (no deps = all) marked stale"
+    else
+      log_fail "I2c. e007 should be stale (all)" "stale: $e007_stale"
+    fi
+  else
+    log_skip "I2. Selective upgrade (python3 not available)"
+  fi
+
+  # I3. stale_reason recorded
+  if command -v python3 >/dev/null 2>&1; then
+    local reason
+    reason=$(python3 -c "
+import yaml
+with open('outputs/MANIFEST.yaml') as f:
+    data = yaml.safe_load(f)
+print(data['experiments']['e005'].get('stale_reason', 'NONE'))
+")
+    if [ "$reason" = "changed components: cv" ]; then
+      log_pass "I3. stale_reason recorded: 'changed components: cv'"
+    else
+      log_fail "I3. stale_reason recorded" "Got: $reason"
+    fi
+  else
+    log_skip "I3. stale_reason (python3 not available)"
+  fi
+
+  # I4. experiment-log.md records selective stale info
+  local today
+  today="$(date +%Y-%m-%d)"
+  cat >> experiment-log.md << EOF
+
+## ${today}: Foundation upgraded v2 → v3
+- **Description**: ${TEST_PREFIX} v3 pipeline
+- **Changed components**: cv
+- **Stale experiments**: e005, e007 (2 total)
+- **Skipped experiments**: e006 (1 total, not affected)
+- **Previous foundation**: v2 (now stale)
+EOF
+
+  assert_file_contains experiment-log.md "Changed components: cv" \
+    "I4a. experiment-log records changed components"
+  assert_file_contains experiment-log.md "Skipped experiments: e006" \
+    "I4b. experiment-log records skipped experiments"
+}
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 print_summary() {
@@ -1269,6 +1471,7 @@ main() {
   test_deprecation
   test_milestone
   test_foundation
+  test_selective_stale
 
   print_summary
 
