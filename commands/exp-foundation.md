@@ -12,11 +12,12 @@ Manage foundation versions that track the experimental pipeline configuration. W
 ```bash
 /exp-foundation start v1 "Initial pipeline: Cleanlab + 5-fold CV"
 /exp-foundation upgrade v2 "Nested CV + Y-randomization baseline"
+/exp-foundation upgrade v2 "Nested CV" --changed-components cv
 /exp-foundation status
 ```
 
 ## Arguments
-- `$ARGUMENTS`: `start <version> <description>` | `upgrade <version> <description>` | `status`
+- `$ARGUMENTS`: `start <version> <description>` | `upgrade <version> <description> [--changed-components comp1,comp2]` | `status`
 
 ## Subcommands
 
@@ -53,29 +54,46 @@ Create the first foundation version for a project.
    Use /exp-foundation upgrade v2 "description" when pipeline changes.
    ```
 
-### upgrade `<version>` `<description>`
+### upgrade `<version>` `<description>` `[--changed-components comp1,comp2]`
 
-Create a new foundation version and mark the previous one (and its experiments) as stale.
+Create a new foundation version and selectively mark downstream experiments as stale.
 
-1. **Parse Arguments**: version (required), description (required)
+1. **Parse Arguments**: version (required), description (required), `--changed-components` (optional, comma-separated list of component keys that changed)
 2. **Validate Environment**: Check `.omc-config.sh` and `outputs/MANIFEST.yaml` exist
 3. **Version Conflict**: If version already exists in `foundations`, error: "Foundation {version} already exists."
 4. **Identify Current Foundation**: Find the foundation with `status: current`
-5. **List Affected Experiments**: Find all experiments where `foundation` matches the current foundation AND `status` is `final` or `experimental`. Display the list:
+5. **List Affected Experiments** (selective stale propagation):
+
+   **If `--changed-components` is provided** (e.g., `--changed-components cv,labels`):
+   - Parse comma-separated component list
+   - For each experiment on the current foundation with `status` = `final` or `experimental`:
+     - If experiment has `depends_on_components`: check intersection with changed components
+     - If experiment has NO `depends_on_components`: treat as "depends on all" → always affected
+     - Intersection not empty → affected. Empty → NOT affected (skipped).
+
+   **If `--changed-components` is NOT provided**:
+   - ALL experiments on the current foundation are affected (v1.3.0 behavior)
+
+   Display the list:
    ```
    Foundation upgrade: v1 → v2
+   Changed components: cv
 
    The following experiments will be marked stale:
-     e014 (final)  - E vs EP separability
-     e015 (final)  - Feature selection
-     e025 (experimental) - SHAP hypotheses
+     e014 (final)  - E vs EP separability [depends: labels, cv, models]
+     e015 (final)  - Feature selection [depends: all (unspecified)]
 
-   3 experiments affected. Proceed? [Y/n]
+   Skipped (not affected):
+     e024 (final)  - Descriptor 계산 [depends: labels]
+
+   2 experiments affected, 1 skipped. Proceed? [Y/n]
    ```
+
 6. **On User Confirmation**:
    - Set old foundation `status: stale`
    - Create new foundation with `status: current`
-   - For each affected experiment: set `stale: true`
+   - For each affected experiment: set `stale: true` and `stale_reason: "changed components: cv,labels"`
+   - Skipped experiments: leave `stale: false` (unchanged)
    - Update root `updated` timestamp
 7. **Update MANIFEST.yaml**:
    ```yaml
@@ -103,14 +121,17 @@ Create a new foundation version and mark the previous one (and its experiments) 
    ```markdown
    ## YYYY-MM-DD: Foundation upgraded v1 → v2
    - **Description**: Nested CV + Y-randomization baseline
-   - **Stale experiments**: e014, e015, e025 (3 total)
+   - **Changed components**: cv (or "all" if --changed-components not specified)
+   - **Stale experiments**: e014, e015 (2 total)
+   - **Skipped experiments**: e024 (1 total, not affected)
    - **Previous foundation**: v1 (now stale)
    ```
 9. **Display Summary**:
    ```
    Foundation v2 created (current).
    Foundation v1 marked stale.
-   3 experiments marked stale.
+   2 experiments marked stale (changed: cv).
+   1 experiment skipped (not affected).
 
    Next: Re-run key experiments with /exp-start on foundation v2.
    ```
@@ -153,6 +174,8 @@ When any foundation command is run on a v2 MANIFEST:
 | Foundation version already exists | Error with message |
 | No current foundation for upgrade | "No current foundation. Use `start` first." |
 | No experiments affected by upgrade | Proceed without stale marking, inform user |
+| `--changed-components` lists unknown component | Warning: "Component '{name}' not found in foundation {version}. Proceeding anyway." |
+| `--changed-components` with empty value | Error: "Provide component names: --changed-components cv,labels" |
 
 ## Related Commands
 

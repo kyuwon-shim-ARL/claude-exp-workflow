@@ -52,9 +52,14 @@ experiments:
 If the experiment has `stale: true`, display a warning before finalization:
 ```
 Warning: e005 is marked stale (foundation v1 is no longer current).
+  Reason: changed components: cv
+  Depends on: labels, cv
 Finalizing a stale experiment means its results may not reflect the latest pipeline.
 Proceed anyway? [Y/n]
 ```
+The warning includes:
+- `stale_reason` if present (e.g., "changed components: cv")
+- `depends_on_components` if present (e.g., "labels, cv"), or "(all)" if not specified
 
 **Deprecation:**
 ```yaml

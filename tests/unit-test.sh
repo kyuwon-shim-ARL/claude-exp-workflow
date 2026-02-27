@@ -1230,6 +1230,261 @@ print('COMPATIBLE')
   rm -f outputs/MANIFEST_v2.yaml
 }
 
+# ===========================================================================
+# H. Selective Stale Propagation Tests (6 tests)
+# ===========================================================================
+test_selective_stale_propagation() {
+  log_section "H. Selective Stale Propagation (6 tests)"
+
+  cd "$TMPDIR"
+
+  # Create a v3 MANIFEST with foundation + experiments having depends_on_components
+  mkdir -p outputs
+  cat > outputs/MANIFEST.yaml << 'MANIFEST_V3_SEL'
+version: 3
+updated: "2026-02-27T00:00:00Z"
+scan_paths:
+  - outputs/
+foundations:
+  v1:
+    description: "Initial pipeline"
+    components:
+      labels: cleanlab
+      cv: 5fold
+      models: baseline_rf
+    status: current
+    created: "2026-02-01T00:00:00Z"
+milestone: {}
+experiments:
+  e014:
+    path: outputs/e014/
+    status: final
+    description: "E vs EP separability"
+    foundation: v1
+    depends_on_components:
+      - labels
+      - cv
+      - models
+    stale: false
+  e024:
+    path: outputs/e024/
+    status: final
+    description: "Descriptor calculation"
+    foundation: v1
+    depends_on_components:
+      - labels
+    stale: false
+  e015:
+    path: outputs/e015/
+    status: final
+    description: "Feature selection"
+    foundation: v1
+    stale: false
+  e099:
+    path: outputs/e099/
+    status: deprecated
+    description: "Old experiment"
+    foundation: v1
+    depends_on_components:
+      - cv
+    stale: false
+MANIFEST_V3_SEL
+
+  # H1. depends_on_components field parsed correctly
+  if command -v python3 >/dev/null 2>&1; then
+    local deps_check
+    deps_check=$(python3 -c "
+import yaml
+with open('outputs/MANIFEST.yaml') as f:
+    data = yaml.safe_load(f)
+e014 = data['experiments']['e014']
+deps = e014.get('depends_on_components', [])
+assert isinstance(deps, list), f'Expected list, got {type(deps)}'
+assert deps == ['labels', 'cv', 'models'], f'Got {deps}'
+print('VALID')
+" 2>&1)
+    if [ "$deps_check" = "VALID" ]; then
+      log_pass "H1. depends_on_components parsed as list [labels, cv, models]"
+    else
+      log_fail "H1. depends_on_components parsed correctly" "$deps_check"
+    fi
+  else
+    log_skip "H1. depends_on_components parsing (python3 not available)"
+  fi
+
+  # H2. Selective stale: only experiments with matching components are stale
+  if command -v python3 >/dev/null 2>&1; then
+    local selective_check
+    selective_check=$(python3 -c "
+import yaml
+with open('outputs/MANIFEST.yaml') as f:
+    data = yaml.safe_load(f)
+changed_components = {'cv'}
+for eid, edata in data['experiments'].items():
+    if edata.get('foundation') != 'v1':
+        continue
+    if edata.get('status') not in ('final', 'experimental'):
+        continue
+    deps = edata.get('depends_on_components', None)
+    if deps is None:
+        # No depends_on_components = depends on all = affected
+        edata['stale'] = True
+        edata['stale_reason'] = 'changed components: cv'
+    elif set(deps) & changed_components:
+        edata['stale'] = True
+        edata['stale_reason'] = 'changed components: cv'
+    # else: not affected, leave stale as-is
+
+# e014 depends on [labels, cv, models] -> cv intersects -> stale
+assert data['experiments']['e014']['stale'] == True, 'e014 should be stale'
+# e024 depends on [labels] -> no intersection with cv -> NOT stale
+assert data['experiments']['e024']['stale'] == False, 'e024 should NOT be stale'
+# e015 has no depends_on_components -> depends on all -> stale
+assert data['experiments']['e015']['stale'] == True, 'e015 should be stale (all)'
+# e099 is deprecated -> skip regardless
+assert data['experiments']['e099']['stale'] == False, 'e099 should NOT be stale (deprecated)'
+print('SELECTIVE_OK')
+" 2>&1)
+    if [ "$selective_check" = "SELECTIVE_OK" ]; then
+      log_pass "H2. Selective stale: cv change affects e014,e015 but not e024,e099"
+    else
+      log_fail "H2. Selective stale propagation" "$selective_check"
+    fi
+  else
+    log_skip "H2. Selective stale propagation (python3 not available)"
+  fi
+
+  # H3. stale_reason field set correctly
+  if command -v python3 >/dev/null 2>&1; then
+    local reason_check
+    reason_check=$(python3 -c "
+import yaml
+with open('outputs/MANIFEST.yaml') as f:
+    data = yaml.safe_load(f)
+# Simulate upgrade with changed cv
+changed = {'cv'}
+for eid, edata in data['experiments'].items():
+    if edata.get('foundation') != 'v1' or edata.get('status') not in ('final', 'experimental'):
+        continue
+    deps = edata.get('depends_on_components', None)
+    if deps is None or set(deps) & changed:
+        edata['stale'] = True
+        edata['stale_reason'] = 'changed components: cv'
+assert data['experiments']['e014'].get('stale_reason') == 'changed components: cv'
+assert data['experiments']['e015'].get('stale_reason') == 'changed components: cv'
+assert 'stale_reason' not in data['experiments']['e024'] or data['experiments']['e024'].get('stale_reason') is None
+print('REASON_OK')
+" 2>&1)
+    if [ "$reason_check" = "REASON_OK" ]; then
+      log_pass "H3. stale_reason set to 'changed components: cv' on affected experiments"
+    else
+      log_fail "H3. stale_reason field" "$reason_check"
+    fi
+  else
+    log_skip "H3. stale_reason field (python3 not available)"
+  fi
+
+  # H4. No --changed-components = all experiments stale (v1.3.0 compat)
+  if command -v python3 >/dev/null 2>&1; then
+    local all_stale_check
+    all_stale_check=$(python3 -c "
+import yaml
+# Re-read fresh MANIFEST
+with open('outputs/MANIFEST.yaml') as f:
+    data = yaml.safe_load(f)
+# No changed_components = mark ALL on current foundation
+changed_components = None  # represents --changed-components not provided
+stale_count = 0
+for eid, edata in data['experiments'].items():
+    if edata.get('foundation') != 'v1':
+        continue
+    if edata.get('status') not in ('final', 'experimental'):
+        continue
+    edata['stale'] = True
+    stale_count += 1
+# e014, e024, e015 should all be stale (e099 is deprecated = skip)
+assert stale_count == 3, f'Expected 3, got {stale_count}'
+print('ALL_STALE_OK')
+" 2>&1)
+    if [ "$all_stale_check" = "ALL_STALE_OK" ]; then
+      log_pass "H4. No --changed-components: all 3 active experiments marked stale"
+    else
+      log_fail "H4. No --changed-components fallback" "$all_stale_check"
+    fi
+  else
+    log_skip "H4. No --changed-components fallback (python3 not available)"
+  fi
+
+  # H5. Missing depends_on_components = depends on all (conservative default)
+  if command -v python3 >/dev/null 2>&1; then
+    local default_check
+    default_check=$(python3 -c "
+import yaml
+with open('outputs/MANIFEST.yaml') as f:
+    data = yaml.safe_load(f)
+# e015 has NO depends_on_components -> should be treated as 'depends on all'
+e015 = data['experiments']['e015']
+deps = e015.get('depends_on_components', None)
+assert deps is None, f'e015 should have no depends_on_components, got {deps}'
+# With any changed_component, e015 should be affected
+changed = {'labels'}
+affected = deps is None or (set(deps) & changed)
+assert affected == True, 'e015 should be affected (depends on all)'
+print('DEFAULT_OK')
+" 2>&1)
+    if [ "$default_check" = "DEFAULT_OK" ]; then
+      log_pass "H5. Missing depends_on_components = depends on all (conservative)"
+    else
+      log_fail "H5. Missing depends_on_components default" "$default_check"
+    fi
+  else
+    log_skip "H5. Missing depends_on_components default (python3 not available)"
+  fi
+
+  # H6. Backwards compat: v2 MANIFEST (no foundations) still works
+  if command -v python3 >/dev/null 2>&1; then
+    local compat_check
+    compat_check=$(python3 -c "
+import yaml
+# Create a v2 MANIFEST in memory
+v2_data = {
+    'version': 2,
+    'updated': '2026-02-27T00:00:00Z',
+    'scan_paths': ['outputs/'],
+    'milestone': {},
+    'experiments': {
+        'e001': {
+            'path': 'outputs/e001/',
+            'status': 'final',
+            'description': 'Legacy experiment'
+        }
+    }
+}
+# Verify no foundations, no depends_on_components, no stale
+assert 'foundations' not in v2_data
+e001 = v2_data['experiments']['e001']
+assert 'depends_on_components' not in e001
+assert 'stale' not in e001
+assert 'stale_reason' not in e001
+# Selective stale algo should gracefully skip (no foundations = no-op)
+foundations = v2_data.get('foundations', {})
+current_f = None
+for fv, fdata in foundations.items():
+    if fdata.get('status') == 'current':
+        current_f = fv
+assert current_f is None, 'No current foundation in v2'
+print('COMPAT_OK')
+" 2>&1)
+    if [ "$compat_check" = "COMPAT_OK" ]; then
+      log_pass "H6. v2 MANIFEST: no foundations, selective stale is no-op"
+    else
+      log_fail "H6. v2 MANIFEST backwards compatibility" "$compat_check"
+    fi
+  else
+    log_skip "H6. v2 MANIFEST backwards compatibility (python3 not available)"
+  fi
+}
+
 # ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
@@ -1273,6 +1528,7 @@ main() {
   test_milestone_status
   test_milestone_end
   test_manifest_v3_foundation
+  test_selective_stale_propagation
 
   print_summary
 

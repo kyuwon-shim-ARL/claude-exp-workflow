@@ -20,7 +20,7 @@ GitHub Project (칸반/마일스톤) + MANIFEST.yaml (결과 추적) + experimen
 - "마일스톤 현황" / "milestone status" → /exp-milestone status
 - "마일스톤 종료" / "milestone end" → /exp-milestone end
 - "foundation 시작" / "파운데이션" → /exp-foundation start
-- "foundation 업그레이드" / "pipeline 변경" → /exp-foundation upgrade
+- "foundation 업그레이드" / "pipeline 변경" → /exp-foundation upgrade [--changed-components]
 - "foundation 현황" → /exp-foundation status
 - "MANIFEST" / "결과 목록" → MANIFEST.yaml 확인
 
@@ -33,7 +33,7 @@ GitHub Project (칸반/마일스톤) + MANIFEST.yaml (결과 추적) + experimen
     ↓
 /exp-milestone start (선택, 마일스톤 생성)
     ↓
-/exp-workflow:exp-start (각 실험마다, 활성 foundation + 마일스톤 자동 연결)
+/exp-workflow:exp-start (각 실험마다, 활성 foundation + 마일스톤 자동 연결, --depends-on으로 component 의존 선언 가능)
     ↓
 /ralplan → /ralph (반복적 계획-실행)
     ↓
@@ -41,7 +41,7 @@ GitHub Project (칸반/마일스톤) + MANIFEST.yaml (결과 추적) + experimen
     ↓
 /exp-workflow:exp-finalize (final/deprecated)
     ↓
-/exp-foundation upgrade (파이프라인 변경 시, 하류 실험 stale 마킹)
+/exp-foundation upgrade (파이프라인 변경 시, --changed-components로 선택적 stale 마킹)
     ↓
 /exp-milestone end (마일스톤 종료)
     ↓
@@ -64,7 +64,8 @@ GitHub Project (칸반/마일스톤) + MANIFEST.yaml (결과 추적) + experimen
 8. **마일스톤 시작 시**: omc-milestone-start 호출 + MANIFEST milestone 블록 설정 + experiment-log.md 기록
 9. **마일스톤 종료 시**: omc-milestone-end 호출 + MANIFEST milestone 블록 초기화 + experiment-log.md 기록
 10. **실험 시작 시 마일스톤 자동 연결**: MANIFEST milestone.title이 있으면 실험 항목에 milestone 필드 자동 추가
-11. **실험 시작 시 foundation 자동 연결**: MANIFEST foundations에서 `status: current`인 항목이 있으면 실험 항목에 `foundation` 필드 자동 추가 + `stale: false` 설정
+11. **실험 시작 시 foundation 자동 연결**: MANIFEST foundations에서 `status: current`인 항목이 있으면 실험 항목에 `foundation` 필드 자동 추가 + `stale: false` 설정 + `depends_on_components` 설정 (`--depends-on` 플래그 지정 시 해당 값, 미지정 시 생략하여 전체 의존)
+12. **Foundation upgrade 시 선택적 stale 전파**: `--changed-components` 지정 시 해당 component에 의존하는 실험만 stale 처리. 미지정 시 전체 stale (v1.3.0 호환). 매칭 알고리즘: `experiment.depends_on_components ∩ changed_components ≠ ∅ → stale`. `depends_on_components` 미선언 실험은 전체 의존으로 간주하여 항상 stale.
 
 ## MANIFEST.yaml Structure
 
@@ -107,7 +108,22 @@ experiments:
     branch: feature-50
     milestone: "v1.0-foundation"
     foundation: v1
+    depends_on_components: [labels, cv, models]
     stale: true
+    stale_reason: "changed components: cv"
+  e024:
+    path: outputs/e024/
+    script: "scripts/run_e024.py"
+    params: {}
+    outputs:
+      - outputs/e024/descriptors.csv
+    status: final
+    description: "Descriptor 계산"
+    issue: 55
+    branch: feature-55
+    foundation: v1
+    depends_on_components: [labels]
+    stale: false
   e064:
     path: outputs/e064/
     script: ""
@@ -118,6 +134,7 @@ experiments:
     issue: 60
     branch: feature-60
     foundation: v2
+    depends_on_components: [labels, cv, models, baselines]
     stale: false
 ```
 
@@ -129,7 +146,9 @@ experiments:
   - `status`: `current` (active) or `stale` (superseded by a newer version)
   - `created`: ISO 8601 timestamp
 - `experiment.foundation`: Links experiment to the foundation version it was run under
-- `experiment.stale`: `true` if the experiment's foundation has been superseded. Stale experiments should be re-run or their results treated with caution.
+- `experiment.depends_on_components`: List of component keys from the foundation that the experiment depends on. If omitted, the experiment is assumed to depend on ALL components (conservative default). Example: `[labels, cv]`
+- `experiment.stale`: `true` if the experiment's foundation has been superseded AND the experiment depends on a changed component. Stale experiments should be re-run or their results treated with caution.
+- `experiment.stale_reason`: Human-readable reason for stale marking. Example: `"changed components: cv"`. Only present when `stale: true`.
 
 ### Status Semantics
 
@@ -140,7 +159,7 @@ experiments:
 | `final` + `stale: true` | Valid under old pipeline | Excluded from /detailed-report |
 | `deprecated` | Permanently invalidated | Excluded |
 
-**Backwards Compatibility**: version 1 MANIFESTs (without `milestone` block) and version 2 MANIFESTs (without `foundations` block) are fully supported. Missing foundation fields are treated as "no foundation". Missing stale field is treated as "not stale".
+**Backwards Compatibility**: version 1 MANIFESTs (without `milestone` block) and version 2 MANIFESTs (without `foundations` block) are fully supported. Missing foundation fields are treated as "no foundation". Missing stale field is treated as "not stale". Missing `depends_on_components` field is treated as "depends on all components" (conservative default — always marked stale on upgrade).
 
 ## Experiment Log Format
 
@@ -172,7 +191,7 @@ experiments:
 - DON'T: manually edit MANIFEST status/experiments (use commands instead), use experimental results in /detailed-report, use stale results in /detailed-report, call omc-milestone-* CLI directly (use /exp-milestone instead)
 - DO: always use /exp-start, keep MANIFEST and log in sync, mark final before reporting, use /exp-milestone for milestone management, use /exp-foundation for pipeline versioning
 - NOTE: `script:`, `params:`, `outputs:` fields are auto-populated by /ralph execution and /exp-finalize. These are the only MANIFEST fields that get updated outside of /exp-start and /exp-finalize.
-- NOTE: `foundation` and `stale` fields are managed by /exp-start (auto-link) and /exp-foundation upgrade (stale marking). Do not manually edit these fields.
+- NOTE: `foundation`, `depends_on_components`, `stale`, and `stale_reason` fields are managed by /exp-start (auto-link + depends-on) and /exp-foundation upgrade (selective stale marking). Do not manually edit these fields.
 
 ## Foundation Usage Scenarios
 
@@ -189,11 +208,15 @@ AI 에이전트(/sciomc, /ralph, /ralplan 등)가 foundation 기능을 활용할
 
 **판단 기준**: MANIFEST에 `foundations` 블록이 비어있고 (`foundations: {}`), 실험을 시작하려는 시점
 
-### Scenario 2: 실험 시작 - Foundation 자동 연결
+### Scenario 2: 실험 시작 - Foundation 자동 연결 + Component 의존 선언
 
-**트리거**: `/exp-start e{NUM} {goal}`
-**행동**: 현재 `status: current`인 foundation을 자동으로 `foundation` 필드에 연결 + `stale: false` 설정
-**에이전트 규칙**: foundation이 없으면 연결하지 않음 (v2 호환). 있으면 반드시 연결.
+**트리거**: `/exp-start e{NUM} {goal}` 또는 `/exp-start e{NUM} --depends-on labels,cv {goal}`
+**행동**: 현재 `status: current`인 foundation을 자동으로 `foundation` 필드에 연결 + `stale: false` 설정 + `depends_on_components` 설정
+**에이전트 규칙**:
+- foundation이 없으면 연결하지 않음 (v2 호환). 있으면 반드시 연결.
+- `--depends-on` 플래그가 있으면 → 해당 component 목록을 `depends_on_components`에 설정
+- `--depends-on` 플래그가 없으면 → `depends_on_components` 필드 생략 (= 전체 의존, 보수적 기본값)
+- 에이전트가 실험 목표에서 의존 component를 판단할 수 있으면 `--depends-on` 사용 권장
 
 ### Scenario 3: 파이프라인 변경 감지 - Foundation Upgrade
 
@@ -206,7 +229,8 @@ AI 에이전트(/sciomc, /ralph, /ralplan 등)가 foundation 기능을 활용할
 
 **행동**:
 ```
-/exp-foundation upgrade v2 "변경 내용 설명"
+/exp-foundation upgrade v2 "변경 내용 설명" --changed-components cv
+/exp-foundation upgrade v2 "변경 내용 설명"                          # 전체 stale (미지정)
 ```
 
 **에이전트 판단 흐름**:
@@ -217,9 +241,21 @@ AI 에이전트(/sciomc, /ralph, /ralplan 등)가 foundation 기능을 활용할
     │
     ├─ "파이프라인 자체에 결함 발견" → upgrade 필요
     │   (예: data leakage, CV 누수, 라벨 오류)
+    │   어떤 component가 바뀌었는지 파악 → --changed-components 사용
     │
     └─ "새로운 방법론이 기존을 대체" → upgrade 필요
         (예: nested CV가 기존 stratified CV를 대체)
+        → --changed-components cv 사용
+```
+
+**선택적 stale 매칭 알고리즘**:
+```
+--changed-components 지정 시:
+  실험의 depends_on_components ∩ changed_components ≠ ∅ → stale
+  실험에 depends_on_components 미선언 → 전체 의존으로 간주 → stale
+
+--changed-components 미지정 시:
+  해당 foundation의 모든 실험 → stale (v1.3.0 호환)
 ```
 
 ### Scenario 4: Stale 실험 처리
@@ -259,7 +295,8 @@ status: final AND (stale: false OR stale 필드 없음)
     │
     └─ 파이프라인 수준 문제 발견 → 사용자에게 제안:
         "파이프라인 변경이 필요합니다. /exp-foundation upgrade를 권장합니다."
-        사용자 승인 후 → /exp-foundation upgrade 실행
+        어떤 component가 변경되는지 파악 → --changed-components 포함하여 제안
+        사용자 승인 후 → /exp-foundation upgrade --changed-components {components} 실행
 ```
 
 **중요**: 에이전트는 자체적으로 foundation upgrade를 실행하지 않음. 항상 사용자에게 먼저 제안하고 승인을 받은 후 실행.

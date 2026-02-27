@@ -11,17 +11,20 @@ Start a new experiment with GitHub issue tracking, branch creation, and MANIFEST
 ```
 /exp-start e005 ISM 윈도우 사이즈 최적화
 /exp-start e005 --milestone "v2.0" ISM 윈도우 사이즈 최적화
+/exp-start e005 --depends-on labels,cv ISM 윈도우 사이즈 최적화
 ```
 
 ## Workflow
 
 ### 1. Parse Arguments
-Extract experiment number, optional `--milestone` flag, and goal from $ARGUMENTS:
-- Pattern: `e{NUM} [--milestone "title"] {goal description}`
+Extract experiment number, optional flags, and goal from $ARGUMENTS:
+- Pattern: `e{NUM} [--milestone "title"] [--depends-on comp1,comp2] {goal description}`
 - Example: "e005 ISM 윈도우 사이즈 최적화"
 - Example: "e005 --milestone v2.0 ISM 윈도우 사이즈 최적화"
+- Example: "e005 --depends-on labels,cv ISM 윈도우 사이즈 최적화"
 
 If `--milestone` is provided, use that value. Otherwise, fall back to MANIFEST `milestone.title`.
+If `--depends-on` is provided, parse comma-separated component names for `depends_on_components`. Otherwise, omit the field (= depends on all components).
 
 ### 2. Validate Environment
 Check `.omc-config.sh` exists:
@@ -51,7 +54,9 @@ Add new experiment entry and update root timestamp in `outputs/MANIFEST.yaml`.
 **Foundation auto-linking (v3 MANIFEST only):**
 1. MANIFEST `foundations` 블록에서 `status: current`인 foundation 찾기
 2. 있으면 → experiment에 `foundation` 필드 자동 추가 + `stale: false`
-3. 없으면 → foundation/stale 필드 생략 (v2 호환)
+3. `--depends-on` 플래그가 있으면 → `depends_on_components` 필드 추가 (예: `[labels, cv]`)
+4. `--depends-on` 플래그가 없으면 → `depends_on_components` 필드 생략 (= 전체 의존)
+5. foundation이 없으면 → foundation/stale/depends_on_components 필드 모두 생략 (v2 호환)
 
 ```yaml
 updated: "YYYY-MM-DDTHH:MM:SSZ"  # root updated: refresh on every change
@@ -67,6 +72,7 @@ experiments:
     branch: {branch_name}
     milestone: "{milestone_title}"  # resolved from --milestone flag or MANIFEST, omit if none
     foundation: "v1"               # auto-linked from current foundation (v3 only, omit if none)
+    depends_on_components: [labels, cv]  # from --depends-on flag (v3 only, omit if not specified = all)
     stale: false                   # false for new experiments (v3 only, omit if no foundation)
 ```
 
