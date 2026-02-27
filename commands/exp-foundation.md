@@ -127,12 +127,24 @@ Create a new foundation version and selectively mark downstream experiments as s
    - **Previous foundation**: v1 (now stale)
    ```
 9. **Display Summary**:
+
+   **When `--changed-components` was provided:**
    ```
    Foundation v2 created (current).
    Foundation v1 marked stale.
    2 experiments marked stale (changed: cv).
    1 experiment skipped (not affected).
 
+   Next: Re-run key experiments with /exp-start on foundation v2.
+   ```
+
+   **When `--changed-components` was NOT provided:**
+   ```
+   Foundation v2 created (current).
+   Foundation v1 marked stale.
+   3 experiments marked stale.
+
+   Tip: Use --changed-components cv,labels to selectively mark stale.
    Next: Re-run key experiments with /exp-start on foundation v2.
    ```
 
