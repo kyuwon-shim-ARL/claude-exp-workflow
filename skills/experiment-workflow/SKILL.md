@@ -15,6 +15,8 @@ GitHub Project (칸반/마일스톤) + MANIFEST.yaml (결과 추적) + experimen
 - "e{NUM} 실험 시작" → /exp-workflow:exp-start
 - "실험 현황" / "진행 상황" → /exp-workflow:exp-status
 - "final로 해줘" / "확정" → /exp-workflow:exp-finalize
+- "폐기" / "deprecated" / "실험 폐기" → /exp-workflow:exp-finalize --deprecate
+- "재개" / "다시 열기" / "reopen" / "실험 재실행" → /exp-workflow:exp-finalize --reopen
 - "프로젝트 초기화" → /exp-workflow:exp-init
 - "마일스톤 시작" / "milestone start" → /exp-milestone start
 - "마일스톤 현황" / "milestone status" → /exp-milestone status
