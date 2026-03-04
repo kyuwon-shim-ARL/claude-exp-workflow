@@ -1491,7 +1491,7 @@ print('COMPAT_OK')
 # I. Date Field Support Tests (9 tests)
 # ===========================================================================
 test_date_field_support() {
-  log_section "I. Date Field Support (9 tests)"
+  log_section "I. Date Field Support (11 tests)"
 
   cd "$TMPDIR"
 
@@ -1822,13 +1822,111 @@ GHSTUB
   chmod +x "$TMPDIR/bin/gh"
 
   rm -f /tmp/omc-unit-date-calls.txt
+
+  # I10. omc_clear_date prints warning when issue not in project (symmetric with I7)
+  cat > "$TMPDIR/bin/gh" << 'GHSTUB_NOITEM2'
+#!/bin/bash
+ALL_ARGS="$*"
+case "$ALL_ARGS" in
+  *"project item-list"*)
+    echo '{"items":[]}'
+    ;;
+  *"project view"*)
+    echo '{"id":"PVT_proj1","number":1}'
+    ;;
+  *)
+    echo ""
+    ;;
+esac
+GHSTUB_NOITEM2
+  chmod +x "$TMPDIR/bin/gh"
+
+  cat > "$TMPDIR/.omc-config.sh" << 'CONF_NOITEM2'
+#!/bin/bash
+export OMC_GH_REPO="test/repo"
+export OMC_PROJECT_NUMBER="1"
+export OMC_PROJECT_OWNER="@me"
+export OMC_STATUS_FIELD_ID="PVTSSF_test"
+export OMC_DATE_END_FIELD_ID="PVTF_end_test"
+CONF_NOITEM2
+
+  local i10_output
+  i10_output=$(bash -c "
+    cd '$TMPDIR'
+    source $HOME/bin/omc-load-config 2>/dev/null
+    omc_clear_date 999 'PVTF_end_test'
+  " 2>&1)
+  if echo "$i10_output" | grep -q "not in the project"; then
+    log_pass "I10. omc_clear_date prints warning when issue not in project"
+  else
+    log_fail "I10. omc_clear_date prints warning when issue not in project" \
+      "output='$i10_output'"
+  fi
+
+  # I11. omc_update_date handles gh API failure gracefully (returns 0, still prints message)
+  cat > "$TMPDIR/bin/gh" << 'GHSTUB_FAIL'
+#!/bin/bash
+ALL_ARGS="$*"
+case "$ALL_ARGS" in
+  *"project item-list"*)
+    echo '{"items":[{"id":"PVTI_item1","content":{"number":42}}]}'
+    ;;
+  *"project view"*)
+    echo '{"id":"PVT_proj1","number":1}'
+    ;;
+  *"project item-edit"*)
+    exit 1
+    ;;
+  *)
+    echo ""
+    ;;
+esac
+GHSTUB_FAIL
+  chmod +x "$TMPDIR/bin/gh"
+
+  cat > "$TMPDIR/.omc-config.sh" << 'CONF_FAIL'
+#!/bin/bash
+export OMC_GH_REPO="test/repo"
+export OMC_PROJECT_NUMBER="1"
+export OMC_PROJECT_OWNER="@me"
+export OMC_STATUS_FIELD_ID="PVTSSF_test"
+export OMC_DATE_START_FIELD_ID="PVTF_start_test"
+CONF_FAIL
+
+  local i11_exit=0
+  local i11_output
+  i11_output=$(bash -c "
+    cd '$TMPDIR'
+    source $HOME/bin/omc-load-config 2>/dev/null
+    omc_update_date 42 'PVTF_start_test' '2026-01-01'
+  " 2>&1) || i11_exit=$?
+  if [ "$i11_exit" -eq 0 ] && echo "$i11_output" | grep -q "Updated Issue"; then
+    log_pass "I11. omc_update_date handles gh API failure gracefully (still prints Updated)"
+  else
+    log_fail "I11. omc_update_date handles gh API failure gracefully" \
+      "exit=$i11_exit output='$i11_output'"
+  fi
+
+  # Restore standard config and gh stub
+  cat > "$TMPDIR/.omc-config.sh" << 'CONF'
+#!/bin/bash
+export OMC_GH_REPO="test/repo"
+export OMC_PROJECT_NUMBER="1"
+export OMC_PROJECT_OWNER="@me"
+export OMC_STATUS_FIELD_ID="PVTSSF_test"
+export OMC_STATUS_BACKLOG="backlog_id"
+export OMC_STATUS_AI_DOING="ai_doing_id"
+export OMC_STATUS_DONE="done_id"
+export OMC_CURRENT_MILESTONE=""
+export OMC_MILESTONE_AUTO_ASSIGN="true"
+CONF
 }
 
 # ===========================================================================
-# J. omc-backfill-dates Tests (11 tests)
+# J. omc-backfill-dates Tests (12 tests)
 # ===========================================================================
 test_backfill_dates() {
-  log_section "J. omc-backfill-dates (11 tests)"
+  log_section "J. omc-backfill-dates (12 tests)"
 
   cd "$TMPDIR"
 
@@ -2027,6 +2125,46 @@ GHSTUB_OPEN
     log_fail "J11. Open issue sets Start Date only" "No date edit calls found"
   fi
   rm -f /tmp/omc-unit-backfill-open-edits.txt
+
+  # J12. Backfill get_issue_dates fails when OMC_GH_REPO is empty
+  cat > "$TMPDIR/.omc-config.sh" << 'CONF_NOREPO'
+#!/bin/bash
+export OMC_GH_REPO=""
+export OMC_PROJECT_NUMBER="1"
+export OMC_PROJECT_OWNER="@me"
+CONF_NOREPO
+
+  cat > "$TMPDIR/bin/gh" << 'GHSTUB_NOREPO'
+#!/bin/bash
+ALL_ARGS="$*"
+case "$ALL_ARGS" in
+  *"project field-list"*)
+    echo '{"fields":[{"name":"Start Date","id":"PVTF_start"},{"name":"Target Date","id":"PVTF_end"}]}'
+    ;;
+  *"project item-list"*)
+    echo '{"items":[{"id":"PVTI_item1","content":{"number":1,"title":"e001: Test","type":"Issue"}}]}'
+    ;;
+  *"project view"*)
+    echo '{"id":"PVT_proj1","number":1}'
+    ;;
+  *"repos//issues"*)
+    exit 1
+    ;;
+  *)
+    echo ""
+    ;;
+esac
+GHSTUB_NOREPO
+  chmod +x "$TMPDIR/bin/gh"
+
+  local j12_output
+  j12_output=$(cd "$TMPDIR" && bash "$HOME/bin/omc-backfill-dates" 2>&1) || true
+  if echo "$j12_output" | grep -qi "error\|could not fetch"; then
+    log_pass "J12. Backfill handles missing OMC_GH_REPO gracefully"
+  else
+    log_fail "J12. Backfill handles missing OMC_GH_REPO gracefully" \
+      "No error message found in output"
+  fi
 
   # Cleanup
   rm -f /tmp/omc-unit-backfill-calls.txt

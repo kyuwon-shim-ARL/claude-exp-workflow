@@ -53,15 +53,15 @@ Milestone: v1.0-foundation (active)
   GitHub Progress: [########....] 50% (2/4 issues)
 
 Experiments [v1.0-foundation]:
-  ID     | Title               | Status       | Stale        | Depends On     | Tasks | Issue
-  e001   | Baseline Scoring    | final        |              | labels, cv     | 4/4   | #1
-  e002   | Feature Selection   | final        | stale (cv)   | labels, cv     | 3/3   | #5
-  e003   | DEG Analysis        | experimental |              | labels         | 2/4   | #8
+  ID     | Title               | Status       | Stale        | Depends On     | Start Date | Target Date | Tasks | Issue
+  e001   | Baseline Scoring    | final        |              | labels, cv     | 2026-01-15 | 2026-02-01  | 4/4   | #1
+  e002   | Feature Selection   | final        | stale (cv)   | labels, cv     | 2026-01-20 | 2026-02-10  | 3/3   | #5
+  e003   | DEG Analysis        | experimental |              | labels         | 2026-02-15 |             | 2/4   | #8
 
 Experiments [no milestone]:
-  ID     | Title               | Status       | Stale        | Depends On     | Tasks | Issue
-  e004   | Biomarker Discovery | experimental |              | (all)          | 0/3   | #12
-  e005   | Legacy Method       | deprecated   |              |                | 2/2   | #15
+  ID     | Title               | Status       | Stale        | Depends On     | Start Date | Target Date | Tasks | Issue
+  e004   | Biomarker Discovery | experimental |              | (all)          | 2026-03-01 |             | 0/3   | #12
+  e005   | Legacy Method       | deprecated   |              |                | 2026-01-10 | 2026-01-25  | 2/2   | #15
 
 MANIFEST: 5 experiments (2 final, 2 experimental, 1 deprecated, 1 stale)
 
@@ -83,8 +83,15 @@ If `foundations` block exists, show current foundation and stale experiment coun
 
 If no active milestone in MANIFEST, show all experiments without grouping (backwards compatible).
 
+**Date Field columns (v1.4+ only):**
+- **Start Date** and **Target Date** columns are shown when `OMC_DATE_START_FIELD_ID` or `OMC_DATE_END_FIELD_ID` are configured in `.omc-config.sh`.
+- Dates are fetched from the GitHub Project item fields via `gh project item-list`.
+- If date fields are not configured, these columns are omitted (backwards compatible).
+- Start Date = experiment creation date; Target Date = finalization/deprecation date.
+- Open experiments show blank Target Date.
+
 #### Detail Mode (with experiment ID)
-Shows: Issue info, branch, task checklist, output files, recent commits.
+Shows: Issue info, branch, task checklist, output files, recent commits, Start Date, Target Date.
 
 ### 6. Edge Cases
 - No MANIFEST.yaml → "Run /exp-init"
