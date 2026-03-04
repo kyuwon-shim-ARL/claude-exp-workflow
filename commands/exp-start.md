@@ -43,6 +43,11 @@ omc-feature-start --type feature "e{NUM}: {goal}" \
 
 Capture: Issue number, Branch name, GitHub URL
 
+Then add the `experiment` label to distinguish from non-experiment tickets:
+```bash
+gh issue edit {issue_number} --add-label "experiment" --repo "$OMC_GH_REPO"
+```
+
 ### 4. Set Start Date on GitHub Project
 If `OMC_DATE_START_FIELD_ID` is configured in `.omc-config.sh`, set the experiment's start date on the GitHub Project item for Roadmap view display.
 
@@ -122,6 +127,7 @@ Next steps:
 | Missing `.omc-config.sh` | Show error: "Run /exp-init first" |
 | Experiment number exists in MANIFEST | Show error: "e{NUM} already exists. Use a different number." |
 | `omc-feature-start` fails | Show error with CLI output, don't proceed |
+| `gh issue edit --add-label` fails | Show warning: "Could not add 'experiment' label. Run: gh label create experiment --color '7B68EE' --repo $OMC_GH_REPO". Continue (non-fatal). |
 | MANIFEST.yaml parse error | Show error with file location and syntax issue |
 
 ## Dependencies

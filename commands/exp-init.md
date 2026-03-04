@@ -93,7 +93,14 @@ export OMC_DATE_START_FIELD_ID="$DATE_START_FIELD_ID"
 export OMC_DATE_END_FIELD_ID="$DATE_END_FIELD_ID"
 ```
 
-### 7. outputs/MANIFEST.yaml 생성
+### 7. GitHub Label 생성
+실험 이슈를 비실험 이슈와 구분하기 위한 `experiment` 라벨을 생성합니다:
+```bash
+gh label create "experiment" --color "7B68EE" --description "Experiment ticket (e001, e002...)" --repo "$OMC_GH_REPO" 2>/dev/null || true
+```
+이미 존재하면 무시됩니다 (`|| true`).
+
+### 8. outputs/MANIFEST.yaml 생성
 ```yaml
 version: 3
 updated: "YYYY-MM-DDTHH:MM:SSZ"
@@ -106,13 +113,13 @@ experiments: {}
 
 **Backwards Compatibility**: version 1 and version 2 MANIFESTs are fully supported. Missing `foundations` block is treated as "no foundations". The `foundations` block is purely additive.
 
-### 8. (Optional) 첫 마일스톤 생성
+### 9. (Optional) 첫 마일스톤 생성
 ```bash
 # Use /exp-milestone start instead of calling omc-milestone-start directly
 /exp-milestone start "$MILESTONE_NAME" "Initial milestone"
 ```
 
-### 9. 완료 메시지
+### 10. 완료 메시지
 ```
 초기화 완료!
 
