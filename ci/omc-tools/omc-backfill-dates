@@ -1,0 +1,310 @@
+#!/bin/bash
+# omc-backfill-dates
+# Retroactively set Start Date and Target Date on GitHub Project items
+# for experiment issues that were created before date field support.
+#
+# Usage:
+#   omc-backfill-dates                    # Process all experiment issues
+#   omc-backfill-dates --dry-run          # Preview changes without applying
+#   omc-backfill-dates --project 3        # Target specific project number
+#
+# Date sources:
+#   Start Date  ← issue createdAt (from GitHub API)
+#   Target Date ← issue closedAt  (from GitHub API, only if closed)
+#
+# Requires: gh CLI, jq, .omc-config.sh (or --project flag)
+
+set -uo pipefail
+
+# ---------------------------------------------------------------------------
+# Parse arguments
+# ---------------------------------------------------------------------------
+DRY_RUN=false
+PROJECT_OVERRIDE=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --dry-run)
+      DRY_RUN=true
+      shift
+      ;;
+    --project)
+      PROJECT_OVERRIDE="$2"
+      if [[ ! "$PROJECT_OVERRIDE" =~ ^[0-9]+$ ]]; then
+        echo "Error: --project value must be a positive integer, got '$PROJECT_OVERRIDE'" >&2
+        exit 1
+      fi
+      shift 2
+      ;;
+    --project=*)
+      PROJECT_OVERRIDE="${1#*=}"
+      if [[ ! "$PROJECT_OVERRIDE" =~ ^[0-9]+$ ]]; then
+        echo "Error: --project value must be a positive integer, got '$PROJECT_OVERRIDE'" >&2
+        exit 1
+      fi
+      shift
+      ;;
+    --help|-h)
+      echo "Usage: omc-backfill-dates [--dry-run] [--project N]"
+      echo ""
+      echo "Options:"
+      echo "  --dry-run     Preview changes without applying"
+      echo "  --project N   Target specific GitHub project number"
+      echo ""
+      echo "Retroactively sets Start Date (from issue createdAt) and"
+      echo "Target Date (from issue closedAt) on experiment issues."
+      exit 0
+      ;;
+    *)
+      echo "Error: Unknown argument '$1'" >&2
+      echo "Usage: omc-backfill-dates [--dry-run] [--project N]" >&2
+      exit 1
+      ;;
+  esac
+done
+
+# ---------------------------------------------------------------------------
+# Load configuration
+# ---------------------------------------------------------------------------
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# Try project-local omc-load-config first, then ~/bin
+if [ -f "$SCRIPT_DIR/omc-load-config" ]; then
+  source "$SCRIPT_DIR/omc-load-config"
+elif [ -f "$HOME/bin/omc-load-config" ]; then
+  source "$HOME/bin/omc-load-config"
+else
+  echo "Error: omc-load-config not found" >&2
+  exit 1
+fi
+
+# Override project number if specified
+if [ -n "$PROJECT_OVERRIDE" ]; then
+  export OMC_PROJECT_NUMBER="$PROJECT_OVERRIDE"
+fi
+
+# Validate required config
+if [ -z "${OMC_PROJECT_NUMBER:-}" ]; then
+  echo "Error: OMC_PROJECT_NUMBER not set. Use --project N or configure .omc-config.sh" >&2
+  exit 1
+fi
+
+# ---------------------------------------------------------------------------
+# Ensure date fields exist on the project
+# ---------------------------------------------------------------------------
+ensure_date_fields() {
+  local owner="${OMC_PROJECT_OWNER:-@me}"
+  local fields_json
+
+  fields_json=$(gh project field-list "$OMC_PROJECT_NUMBER" \
+    --owner "$owner" --format json 2>/dev/null) || {
+    echo "Error: Cannot list fields for project $OMC_PROJECT_NUMBER" >&2
+    return 1
+  }
+
+  # Check for Start Date field
+  local start_id
+  start_id=$(echo "$fields_json" | jq -r '.fields[] | select(.name == "Start Date") | .id' 2>/dev/null)
+
+  if [ -z "$start_id" ] || [ "$start_id" = "null" ]; then
+    if $DRY_RUN; then
+      echo "[DRY-RUN] Would create 'Start Date' field on project $OMC_PROJECT_NUMBER"
+      start_id="PVTF_dryrun_start"
+    else
+      echo "Creating 'Start Date' field..."
+      local create_result
+      create_result=$(gh project field-create "$OMC_PROJECT_NUMBER" \
+        --owner "$owner" --name "Start Date" --data-type "DATE" --format json 2>/dev/null) || {
+        echo "Error: Failed to create Start Date field" >&2
+        return 1
+      }
+      start_id=$(echo "$create_result" | jq -r '.id' 2>/dev/null)
+      echo "Created Start Date field: $start_id"
+    fi
+  else
+    echo "Start Date field exists: $start_id"
+  fi
+
+  # Check for Target Date field
+  local end_id
+  end_id=$(echo "$fields_json" | jq -r '.fields[] | select(.name == "Target Date") | .id' 2>/dev/null)
+
+  if [ -z "$end_id" ] || [ "$end_id" = "null" ]; then
+    if $DRY_RUN; then
+      echo "[DRY-RUN] Would create 'Target Date' field on project $OMC_PROJECT_NUMBER"
+      end_id="PVTF_dryrun_end"
+    else
+      echo "Creating 'Target Date' field..."
+      local create_result
+      create_result=$(gh project field-create "$OMC_PROJECT_NUMBER" \
+        --owner "$owner" --name "Target Date" --data-type "DATE" --format json 2>/dev/null) || {
+        echo "Error: Failed to create Target Date field" >&2
+        return 1
+      }
+      end_id=$(echo "$create_result" | jq -r '.id' 2>/dev/null)
+      echo "Created Target Date field: $end_id"
+    fi
+  else
+    echo "Target Date field exists: $end_id"
+  fi
+
+  export OMC_DATE_START_FIELD_ID="$start_id"
+  export OMC_DATE_END_FIELD_ID="$end_id"
+}
+
+# ---------------------------------------------------------------------------
+# Get all project items (experiment issues)
+# ---------------------------------------------------------------------------
+get_experiment_items() {
+  local owner="${OMC_PROJECT_OWNER:-@me}"
+
+  gh project item-list "$OMC_PROJECT_NUMBER" \
+    --owner "$owner" \
+    --format json 2>/dev/null | \
+    jq -r '.items[] | select(.content.type == "Issue") | select(.content.title | test("^[eE][0-9]+[: ]")) | "\(.content.number)\t\(.content.title)\t\(.id)"' 2>/dev/null
+}
+
+# ---------------------------------------------------------------------------
+# Get issue dates from GitHub API
+# ---------------------------------------------------------------------------
+get_issue_dates() {
+  local issue_num=$1
+  local repo="${OMC_GH_REPO:-}"
+
+  if [ -z "$repo" ]; then
+    echo "Error: OMC_GH_REPO not set" >&2
+    return 1
+  fi
+
+  local raw
+  raw=$(gh api "repos/$repo/issues/$issue_num" 2>/dev/null) || return 1
+  echo "$raw" | jq '{createdAt: .created_at, closedAt: .closed_at, state: .state}' 2>/dev/null
+}
+
+# ---------------------------------------------------------------------------
+# Main backfill logic
+# ---------------------------------------------------------------------------
+main() {
+  echo "======================================"
+  echo "  omc-backfill-dates"
+  echo "======================================"
+  echo ""
+  echo "Project: $OMC_PROJECT_NUMBER"
+  echo "Owner:   ${OMC_PROJECT_OWNER:-@me}"
+  echo "Repo:    ${OMC_GH_REPO:-<not set>}"
+  if $DRY_RUN; then
+    echo "Mode:    DRY-RUN (no changes will be made)"
+  else
+    echo "Mode:    LIVE"
+  fi
+  echo ""
+
+  # Step 1: Ensure date fields exist
+  echo "--- Step 1: Ensure date fields ---"
+  ensure_date_fields || exit 1
+  echo ""
+
+  # Step 2: Get experiment items
+  echo "--- Step 2: Scan experiment issues ---"
+  local items
+  items=$(get_experiment_items)
+
+  if [ -z "$items" ]; then
+    echo "No experiment issues found in project $OMC_PROJECT_NUMBER."
+    echo "Experiment issues must have titles matching pattern: e001: ..."
+    exit 0
+  fi
+
+  local total=0
+  local updated_start=0
+  local updated_end=0
+  local skipped=0
+  local errors=0
+
+  echo ""
+  echo "--- Step 3: Backfill dates ---"
+
+  while IFS=$'\t' read -r issue_num title item_id; do
+    total=$((total + 1))
+    echo ""
+    echo "[$total] Issue #$issue_num: $title"
+
+    # Get issue dates from GitHub API
+    local dates_json
+    dates_json=$(get_issue_dates "$issue_num" 2>/dev/null)
+
+    if [ -z "$dates_json" ]; then
+      echo "  ERROR: Could not fetch issue #$issue_num" >&2
+      errors=$((errors + 1))
+      continue
+    fi
+
+    local created_at closed_at state
+    created_at=$(echo "$dates_json" | jq -r '.createdAt // empty' 2>/dev/null)
+    closed_at=$(echo "$dates_json" | jq -r '.closedAt // empty' 2>/dev/null)
+    state=$(echo "$dates_json" | jq -r '.state // empty' 2>/dev/null)
+
+    # Extract date portion (YYYY-MM-DD) from ISO timestamp
+    local start_date="" end_date=""
+    if [ -n "$created_at" ]; then
+      start_date="${created_at:0:10}"
+    fi
+    if [ -n "$closed_at" ]; then
+      end_date="${closed_at:0:10}"
+    fi
+
+    echo "  State: $state | Created: ${start_date:-N/A} | Closed: ${end_date:-N/A}"
+
+    # Set Start Date
+    if [ -n "$start_date" ]; then
+      if $DRY_RUN; then
+        echo "  [DRY-RUN] Would set Start Date → $start_date"
+        updated_start=$((updated_start + 1))
+      else
+        if omc_update_date "$issue_num" "$OMC_DATE_START_FIELD_ID" "$start_date" 2>/dev/null; then
+          updated_start=$((updated_start + 1))
+        else
+          echo "  ERROR: Failed to set Start Date for #$issue_num" >&2
+          errors=$((errors + 1))
+        fi
+      fi
+    fi
+
+    # Set Target Date (only if issue is closed)
+    if [ -n "$end_date" ]; then
+      if $DRY_RUN; then
+        echo "  [DRY-RUN] Would set Target Date → $end_date"
+        updated_end=$((updated_end + 1))
+      else
+        if omc_update_date "$issue_num" "$OMC_DATE_END_FIELD_ID" "$end_date" 2>/dev/null; then
+          updated_end=$((updated_end + 1))
+        else
+          echo "  ERROR: Failed to set Target Date for #$issue_num" >&2
+          errors=$((errors + 1))
+        fi
+      fi
+    else
+      echo "  Target Date: skipped (issue still open)"
+      skipped=$((skipped + 1))
+    fi
+
+  done <<< "$items"
+
+  # Summary
+  echo ""
+  echo "======================================"
+  echo "  Summary"
+  echo "======================================"
+  echo "  Total issues:      $total"
+  echo "  Start Date set:    $updated_start"
+  echo "  Target Date set:   $updated_end"
+  echo "  Open (no end):     $skipped"
+  echo "  Errors:            $errors"
+  if $DRY_RUN; then
+    echo ""
+    echo "  DRY-RUN complete. Run without --dry-run to apply changes."
+  fi
+  echo ""
+}
+
+main

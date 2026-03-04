@@ -43,7 +43,12 @@ omc-feature-start --type feature "e{NUM}: {goal}" \
 
 Capture: Issue number, Branch name, GitHub URL
 
-### 4. Update MANIFEST.yaml
+### 4. Set Start Date on GitHub Project
+If `OMC_DATE_START_FIELD_ID` is configured in `.omc-config.sh`, set the experiment's start date on the GitHub Project item for Roadmap view display.
+
+This is handled automatically by `omc-feature-start` — no manual action needed. The start date is set to today's date (`YYYY-MM-DD`).
+
+### 5. Update MANIFEST.yaml
 Add new experiment entry and update root timestamp in `outputs/MANIFEST.yaml`.
 
 **Milestone resolution order:**
@@ -81,7 +86,7 @@ Handle cases:
 - `MANIFEST.yaml` doesn't exist → Create with template structure
 - Experiment number already exists → Error with clear message
 
-### 5. Update Experiment Log
+### 6. Update Experiment Log
 Append to `experiment-log.md`:
 
 ```markdown
@@ -95,7 +100,7 @@ Append to `experiment-log.md`:
 
 If `experiment-log.md` doesn't exist, create it with header.
 
-### 6. Display Summary
+### 7. Display Summary
 ```
 Experiment e{NUM} started successfully.
 

@@ -82,7 +82,27 @@ experiments:
 ```
 Reopen removes `deprecation_reason` (if present) and adds `reopen_reason`. The experiment returns to `experimental` state and can be modified, then finalized again.
 
-### 6. Update experiment-log.md
+### 6. Set Target Date on GitHub Project
+If `OMC_DATE_END_FIELD_ID` is configured in `.omc-config.sh`, update the experiment's date on the GitHub Project item for Roadmap view display.
+
+**Derive issue number from MANIFEST:**
+```bash
+ISSUE_NUM=$(python3 -c "import yaml; m=yaml.safe_load(open('outputs/MANIFEST.yaml')); print(m['experiments']['e{NUM}']['issue'])")
+```
+
+**Finalization / Deprecation**: Set Target Date to today (`YYYY-MM-DD`):
+```bash
+source ~/bin/omc-load-config
+omc_update_date "$ISSUE_NUM" "$OMC_DATE_END_FIELD_ID" "$(date -u +%Y-%m-%d)"
+```
+
+**Reopen**: Clear the Target Date (experiment is back in progress):
+```bash
+source ~/bin/omc-load-config
+omc_clear_date "$ISSUE_NUM" "$OMC_DATE_END_FIELD_ID"
+```
+
+### 7. Update experiment-log.md
 Append finalization or deprecation entry. Include milestone information if the experiment has a `milestone` field.
 
 **Output Auto-Detection Rules:**
@@ -111,7 +131,7 @@ If the experiment has a `milestone` field in MANIFEST, include it in the log ent
 4. Update MANIFEST `outputs:` array with detected file paths
 5. Write detected files summary to experiment-log.md entry
 
-### 7. Create Pull Request (Finalization Only)
+### 8. Create Pull Request (Finalization Only)
 ```bash
 git add outputs/MANIFEST.yaml experiment-log.md
 git commit -m "finalize: promote e005 to final status
@@ -121,7 +141,7 @@ git push -u origin HEAD
 gh pr create --title "e005: {title}" --body "..."
 ```
 
-### 8. Display Summary
+### 9. Display Summary
 Show: changes made, PR URL, issues to be closed.
 
 ## Edge Cases
@@ -137,6 +157,7 @@ Show: changes made, PR URL, issues to be closed.
 1. Validate all experiments first (fail fast)
 2. Combined confirmation prompt
 3. Single MANIFEST edit, single log entry, single PR
+4. **Target Date**: Apply Step 6 (Set Target Date) to each experiment's issue individually. Iterate over all experiments in the batch and call `omc_update_date` for each issue number.
 
 ### Rollback on Failure
 If any step in the finalization sequence fails, follow this recovery protocol:

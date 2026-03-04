@@ -43,12 +43,20 @@ gh project list --owner @me --format json
 
 기존 Project 사용 또는 새로 생성. Project 번호를 기록.
 
-### 4. Status Field ID 자동 발견
+### 4. Field ID 자동 발견
 ```bash
 gh project field-list $PROJECT_NUMBER --owner @me --format json
 ```
 
-"Status" 필드의 id와 options (Backlog, Planning, AI Doing, Human Review, Done) 파싱.
+**Status 필드**: "Status" 필드의 id와 options (Backlog, Planning, AI Doing, Human Review, Done) 파싱.
+
+**Date 필드 (Roadmap 뷰용)**: "Start Date", "Target Date" 필드 자동 탐지.
+- 있으면 → 해당 field ID 기록
+- 없으면 → 자동 생성:
+```bash
+gh project field-create $PROJECT_NUMBER --owner @me --name "Start Date" --data-type "DATE" --format json
+gh project field-create $PROJECT_NUMBER --owner @me --name "Target Date" --data-type "DATE" --format json
+```
 
 ### 5. .gitignore 업데이트 (config 생성 전에 반드시 먼저)
 다음 규칙 추가 (없는 경우만):
@@ -79,6 +87,10 @@ export OMC_STATUS_AI_DOING="$STATUS_AI_DOING"
 export OMC_STATUS_HUMAN_REVIEW="$STATUS_HUMAN_REVIEW"
 export OMC_STATUS_DONE="$STATUS_DONE"
 export OMC_CURRENT_MILESTONE=""
+
+# Date fields for GitHub Project Roadmap view
+export OMC_DATE_START_FIELD_ID="$DATE_START_FIELD_ID"
+export OMC_DATE_END_FIELD_ID="$DATE_END_FIELD_ID"
 ```
 
 ### 7. outputs/MANIFEST.yaml 생성
