@@ -113,6 +113,7 @@ omc_clear_date() {
   local project_id=$(omc_get_project_id)
 
   if [ -z "$item_id" ] || [ "$item_id" = "null" ]; then
+    echo "Warning: Issue #$issue_num is not in the project, skipping date clear" >&2
     return 0
   fi
 

@@ -1,7 +1,7 @@
 {
   "name": "exp-workflow",
   "description": "Experiment lifecycle management with GitHub Project integration, MANIFEST.yaml tracking, and automated logging",
-  "version": "1.4.1",
+  "version": "1.5.0",
   "author": {
     "name": "kyuwon"
   },
