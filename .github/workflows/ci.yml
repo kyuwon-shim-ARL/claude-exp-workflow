@@ -40,6 +40,7 @@ jobs:
             "commands/exp-milestone.md"
             "commands/exp-foundation.md"
             "skills/experiment-workflow/SKILL.md"
+            "ci/omc-tools/omc-backfill-dates"
             "tests/e2e-test.sh"
           )
           for f in "${files[@]}"; do

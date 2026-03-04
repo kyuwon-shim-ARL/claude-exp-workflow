@@ -4,7 +4,8 @@
 # =============================================================================
 # Tests 6 omc-tools scripts with mocked gh CLI (no network calls):
 #   omc-load-config, omc-feature-start, omc-feature-progress,
-#   omc-milestone-start, omc-milestone-status, omc-milestone-end
+#   omc-milestone-start, omc-milestone-status, omc-milestone-end,
+#   omc-backfill-dates
 #
 # Usage:
 #   bash tests/unit-test.sh           # Basic run
@@ -149,7 +150,8 @@ setup() {
 
   # --- Back up real omc scripts from ~/bin ---
   for script in omc-load-config omc-feature-start omc-feature-progress \
-                omc-milestone-start omc-milestone-status omc-milestone-end; do
+                omc-milestone-start omc-milestone-status omc-milestone-end \
+                omc-backfill-dates; do
     if [ -f "$HOME/bin/$script" ]; then
       cp "$HOME/bin/$script" "$BACKUP_DIR/$script"
     fi
@@ -1485,6 +1487,618 @@ print('COMPAT_OK')
   fi
 }
 
+# ===========================================================================
+# I. Date Field Support Tests (9 tests)
+# ===========================================================================
+test_date_field_support() {
+  log_section "I. Date Field Support (9 tests)"
+
+  cd "$TMPDIR"
+
+  # I1. Date field config exports exist in omc-load-config
+  local date_vars
+  date_vars=$(bash -c "
+    cd '$TMPDIR'
+    source $HOME/bin/omc-load-config 2>/dev/null
+    echo \"START=\${OMC_DATE_START_FIELD_ID:-UNSET} END=\${OMC_DATE_END_FIELD_ID:-UNSET}\"
+  " 2>/dev/null)
+  if echo "$date_vars" | grep -q "START=" && echo "$date_vars" | grep -q "END="; then
+    log_pass "I1. Date field config exports exist (OMC_DATE_START_FIELD_ID, OMC_DATE_END_FIELD_ID)"
+  else
+    log_fail "I1. Date field config exports exist" "Got: '$date_vars'"
+  fi
+
+  # I2. omc_update_date function exists in omc-load-config
+  local fn_check
+  fn_check=$(bash -c "
+    source $HOME/bin/omc-load-config 2>/dev/null
+    type -t omc_update_date
+  " 2>/dev/null)
+  if [ "$fn_check" = "function" ]; then
+    log_pass "I2. omc_update_date function exists"
+  else
+    log_fail "I2. omc_update_date function exists" "Got type: '$fn_check'"
+  fi
+
+  # I3. omc_clear_date function exists in omc-load-config
+  fn_check=$(bash -c "
+    source $HOME/bin/omc-load-config 2>/dev/null
+    type -t omc_clear_date
+  " 2>/dev/null)
+  if [ "$fn_check" = "function" ]; then
+    log_pass "I3. omc_clear_date function exists"
+  else
+    log_fail "I3. omc_clear_date function exists" "Got type: '$fn_check'"
+  fi
+
+  # I4. omc-feature-start calls date update when OMC_DATE_START_FIELD_ID is set
+  # Create a gh stub that logs project item-edit --date calls
+  cat > "$TMPDIR/bin/gh" << 'GHSTUB_DATE'
+#!/bin/bash
+ALL_ARGS="$*"
+case "$ALL_ARGS" in
+  *"issue create"*)
+    echo "https://github.com/test/repo/issues/99"
+    ;;
+  *"project item-list"*)
+    echo '{"items":[{"id":"PVTI_item99","content":{"number":99}}]}'
+    ;;
+  *"project view"*)
+    echo '{"id":"PVT_proj1","number":1}'
+    ;;
+  *"project item-add"*)
+    echo '{"id":"PVTI_new"}'
+    ;;
+  *"project item-edit"*"--date"*)
+    echo "$ALL_ARGS" >> /tmp/omc-unit-date-calls.txt
+    echo 'ok'
+    ;;
+  *"project item-edit"*)
+    echo 'ok'
+    ;;
+  *)
+    echo ""
+    ;;
+esac
+GHSTUB_DATE
+  chmod +x "$TMPDIR/bin/gh"
+
+  # Set date field ID in config
+  cat > "$TMPDIR/.omc-config.sh" << 'CONF_DATE'
+#!/bin/bash
+export OMC_GH_REPO="test/repo"
+export OMC_PROJECT_NUMBER="1"
+export OMC_PROJECT_OWNER="@me"
+export OMC_STATUS_FIELD_ID="PVTSSF_test"
+export OMC_STATUS_BACKLOG="backlog_id"
+export OMC_STATUS_AI_DOING="ai_doing_id"
+export OMC_STATUS_DONE="done_id"
+export OMC_CURRENT_MILESTONE=""
+export OMC_DATE_START_FIELD_ID="PVTF_start_test"
+export OMC_DATE_END_FIELD_ID="PVTF_end_test"
+CONF_DATE
+
+  rm -f /tmp/omc-unit-date-calls.txt
+  local output=""
+  output=$(cd "$TMPDIR" && bash "$HOME/bin/omc-feature-start" "Date Test Issue" 2>&1) || true
+  if [ -f /tmp/omc-unit-date-calls.txt ] && grep -q "PVTF_start_test" /tmp/omc-unit-date-calls.txt; then
+    log_pass "I4. omc-feature-start sets Start Date when OMC_DATE_START_FIELD_ID is configured"
+  else
+    log_fail "I4. omc-feature-start sets Start Date" "No --date call with PVTF_start_test found"
+  fi
+
+  # I5. omc-feature-start skips date when OMC_DATE_START_FIELD_ID is empty
+  cat > "$TMPDIR/.omc-config.sh" << 'CONF_NODATE'
+#!/bin/bash
+export OMC_GH_REPO="test/repo"
+export OMC_PROJECT_NUMBER="1"
+export OMC_PROJECT_OWNER="@me"
+export OMC_STATUS_FIELD_ID="PVTSSF_test"
+export OMC_STATUS_BACKLOG="backlog_id"
+export OMC_STATUS_AI_DOING="ai_doing_id"
+export OMC_STATUS_DONE="done_id"
+export OMC_CURRENT_MILESTONE=""
+export OMC_DATE_START_FIELD_ID=""
+export OMC_DATE_END_FIELD_ID=""
+CONF_NODATE
+
+  rm -f /tmp/omc-unit-date-calls.txt
+  output=$(cd "$TMPDIR" && bash "$HOME/bin/omc-feature-start" "No Date Test" 2>&1) || true
+  if [ ! -f /tmp/omc-unit-date-calls.txt ] || ! grep -q "PVTF" /tmp/omc-unit-date-calls.txt 2>/dev/null; then
+    log_pass "I5. omc-feature-start skips date when OMC_DATE_START_FIELD_ID is empty"
+  else
+    log_fail "I5. omc-feature-start skips date when empty" "Unexpected date calls found"
+  fi
+
+  # I6. omc_clear_date calls gh project item-edit --date "" (not --clear)
+  cat > "$TMPDIR/bin/gh" << 'GHSTUB_CLEAR'
+#!/bin/bash
+ALL_ARGS="$*"
+case "$ALL_ARGS" in
+  *"project item-list"*)
+    echo '{"items":[{"id":"PVTI_item99","content":{"number":99}}]}'
+    ;;
+  *"project view"*)
+    echo '{"id":"PVT_proj1","number":1}'
+    ;;
+  *"project item-edit"*)
+    echo "$ALL_ARGS" >> /tmp/omc-unit-clear-calls.txt
+    echo 'ok'
+    ;;
+  *)
+    echo ""
+    ;;
+esac
+GHSTUB_CLEAR
+  chmod +x "$TMPDIR/bin/gh"
+
+  cat > "$TMPDIR/.omc-config.sh" << 'CONF_CLEAR'
+#!/bin/bash
+export OMC_GH_REPO="test/repo"
+export OMC_PROJECT_NUMBER="1"
+export OMC_PROJECT_OWNER="@me"
+export OMC_STATUS_FIELD_ID="PVTSSF_test"
+export OMC_DATE_END_FIELD_ID="PVTF_end_test"
+CONF_CLEAR
+
+  rm -f /tmp/omc-unit-clear-calls.txt
+  bash -c "
+    cd '$TMPDIR'
+    source $HOME/bin/omc-load-config 2>/dev/null
+    omc_clear_date 99 'PVTF_end_test'
+  " 2>/dev/null
+  if [ -f /tmp/omc-unit-clear-calls.txt ] && grep -q '\-\-date' /tmp/omc-unit-clear-calls.txt; then
+    if grep -q '\-\-clear' /tmp/omc-unit-clear-calls.txt; then
+      log_fail "I6. omc_clear_date uses --date (not --clear)" "Found --clear flag"
+    else
+      log_pass "I6. omc_clear_date uses --date to clear date field"
+    fi
+  else
+    log_fail "I6. omc_clear_date uses --date to clear" "No --date call found"
+  fi
+  rm -f /tmp/omc-unit-clear-calls.txt
+
+  # I7. omc_update_date gracefully handles issue not in project (item_id empty)
+  cat > "$TMPDIR/bin/gh" << 'GHSTUB_NOITEM'
+#!/bin/bash
+ALL_ARGS="$*"
+case "$ALL_ARGS" in
+  *"project item-list"*)
+    echo '{"items":[]}'
+    ;;
+  *"project view"*)
+    echo '{"id":"PVT_proj1","number":1}'
+    ;;
+  *)
+    echo ""
+    ;;
+esac
+GHSTUB_NOITEM
+  chmod +x "$TMPDIR/bin/gh"
+
+  cat > "$TMPDIR/.omc-config.sh" << 'CONF_NOITEM'
+#!/bin/bash
+export OMC_GH_REPO="test/repo"
+export OMC_PROJECT_NUMBER="1"
+export OMC_PROJECT_OWNER="@me"
+export OMC_STATUS_FIELD_ID="PVTSSF_test"
+export OMC_DATE_START_FIELD_ID="PVTF_start_test"
+export OMC_DATE_END_FIELD_ID="PVTF_end_test"
+CONF_NOITEM
+
+  local i7_exit=99
+  local i7_output
+  i7_output=$(bash -c "
+    cd '$TMPDIR'
+    source $HOME/bin/omc-load-config 2>/dev/null
+    omc_update_date 999 'PVTF_start_test' '2026-01-01'
+  " 2>&1)
+  i7_exit=$?
+  if [ "$i7_exit" -eq 0 ] && echo "$i7_output" | grep -q "not in the project"; then
+    log_pass "I7. omc_update_date prints warning and returns 0 when issue not in project"
+  else
+    log_fail "I7. omc_update_date prints warning and returns 0 when issue not in project" \
+      "exit=$i7_exit output='$i7_output'"
+  fi
+
+  # I8. Date command produces YYYY-MM-DD format (sanity check for gh project item-edit --date)
+  local date_val
+  date_val=$(date -u +%Y-%m-%d)
+  if echo "$date_val" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'; then
+    log_pass "I8. date -u +%Y-%m-%d produces YYYY-MM-DD format (got: $date_val)"
+  else
+    log_fail "I8. date -u +%Y-%m-%d produces YYYY-MM-DD format" "Got: '$date_val'"
+  fi
+
+  # I9. ensure_date_fields calls field-create for both fields when they are absent
+  cat > "$TMPDIR/bin/gh" << 'GHSTUB_NOFIELDS'
+#!/bin/bash
+ALL_ARGS="$*"
+echo "$ALL_ARGS" >> /tmp/omc-unit-field-create-calls.txt
+case "$ALL_ARGS" in
+  *"project field-list"*)
+    echo '{"fields":[{"name":"Status","id":"PVTSSF_test","options":[]}]}'
+    ;;
+  *"project field-create"*)
+    echo '{"id":"PVTF_new_created"}'
+    ;;
+  *"project item-list"*)
+    echo '{"items":[]}'
+    ;;
+  *"project view"*)
+    echo '{"id":"PVT_proj1","number":1}'
+    ;;
+  *)
+    echo ""
+    ;;
+esac
+GHSTUB_NOFIELDS
+  chmod +x "$TMPDIR/bin/gh"
+
+  cat > "$TMPDIR/.omc-config.sh" << 'CONF_NOFIELDS'
+#!/bin/bash
+export OMC_GH_REPO="test/repo"
+export OMC_PROJECT_NUMBER="1"
+export OMC_PROJECT_OWNER="@me"
+export OMC_STATUS_FIELD_ID="PVTSSF_test"
+export OMC_DATE_START_FIELD_ID=""
+export OMC_DATE_END_FIELD_ID=""
+CONF_NOFIELDS
+
+  rm -f /tmp/omc-unit-field-create-calls.txt
+  # Run backfill in live mode; no items so it exits after ensure_date_fields
+  (cd "$TMPDIR" && bash "$HOME/bin/omc-backfill-dates" 2>&1) || true
+  if [ -f /tmp/omc-unit-field-create-calls.txt ]; then
+    local create_count
+    create_count=$(grep -c "project field-create" /tmp/omc-unit-field-create-calls.txt 2>/dev/null || echo 0)
+    if [ "$create_count" -ge 2 ]; then
+      log_pass "I9. ensure_date_fields calls field-create for Start Date and Target Date when both absent ($create_count calls)"
+    else
+      log_fail "I9. ensure_date_fields calls field-create for both missing date fields" \
+        "Expected >=2 field-create calls, got $create_count"
+    fi
+  else
+    log_fail "I9. ensure_date_fields calls field-create for both missing date fields" \
+      "No gh calls recorded"
+  fi
+  rm -f /tmp/omc-unit-field-create-calls.txt
+
+  # Restore standard config and gh stub
+  cat > "$TMPDIR/.omc-config.sh" << 'CONF'
+#!/bin/bash
+export OMC_GH_REPO="test/repo"
+export OMC_PROJECT_NUMBER="1"
+export OMC_PROJECT_OWNER="@me"
+export OMC_STATUS_FIELD_ID="PVTSSF_test"
+export OMC_STATUS_BACKLOG="backlog_id"
+export OMC_STATUS_AI_DOING="ai_doing_id"
+export OMC_STATUS_DONE="done_id"
+export OMC_CURRENT_MILESTONE=""
+export OMC_MILESTONE_AUTO_ASSIGN="true"
+CONF
+
+  cat > "$TMPDIR/bin/gh" << 'GHSTUB'
+#!/bin/bash
+ALL_ARGS="$*"
+case "$ALL_ARGS" in
+  *"issue create"*)
+    echo "https://github.com/test/repo/issues/42"
+    ;;
+  *"repo view"*)
+    echo '{"nameWithOwner":"test/repo"}'
+    ;;
+  *"issue list"*)
+    echo '[]'
+    ;;
+  *"milestones?state=all"*|*"milestones --jq"*)
+    echo '[{"title":"v1.0","number":1,"state":"open","open_issues":4,"closed_issues":3,"due_on":null}]'
+    ;;
+  *"milestones/"*"--method PATCH"*)
+    echo '{"number":1,"state":"closed"}'
+    ;;
+  *"milestones/"*)
+    echo '{"title":"v1.0","number":1,"state":"open","open_issues":4,"closed_issues":3,"due_on":null}'
+    ;;
+  *"milestones"*"--method POST"*)
+    echo '{"number":2}'
+    ;;
+  *"milestones"*)
+    echo '[{"title":"v1.0","number":1,"state":"open","open_issues":4,"closed_issues":3,"due_on":null}]'
+    ;;
+  *"project item-list"*)
+    echo '{"items":[{"id":"PVTI_item1","content":{"number":42}}]}'
+    ;;
+  *"project view"*)
+    echo '{"id":"PVT_proj1","number":1}'
+    ;;
+  *"project item-add"*|*"project item-edit"*)
+    echo '{"id":"PVTI_new"}'
+    ;;
+  *"project field-list"*)
+    echo '{"fields":[{"name":"Status","id":"PVTSSF_test","options":[]}]}'
+    ;;
+  *)
+    echo "gh-stub: unhandled: $ALL_ARGS" >&2
+    exit 0
+    ;;
+esac
+GHSTUB
+  chmod +x "$TMPDIR/bin/gh"
+
+  rm -f /tmp/omc-unit-date-calls.txt
+}
+
+# ===========================================================================
+# J. omc-backfill-dates Tests (11 tests)
+# ===========================================================================
+test_backfill_dates() {
+  log_section "J. omc-backfill-dates (11 tests)"
+
+  cd "$TMPDIR"
+
+  # Install omc-backfill-dates to ~/bin for testing
+  cp "$PROJECT_ROOT/ci/omc-tools/omc-backfill-dates" "$HOME/bin/omc-backfill-dates"
+  chmod +x "$HOME/bin/omc-backfill-dates"
+
+  # J1. --help flag shows usage
+  local help_output
+  help_output=$(bash "$HOME/bin/omc-backfill-dates" --help 2>&1)
+  assert_output_contains "$help_output" "dry-run" "J1. --help shows usage info with --dry-run"
+
+  # J2. Exits with error when OMC_PROJECT_NUMBER is missing
+  local exit_code=0
+  (
+    unset OMC_PROJECT_NUMBER
+    bash -c "
+      export OMC_PROJECT_NUMBER=''
+      export HOME='$HOME'
+      cd '$TMPDIR'
+      # Create a config without project number
+      cat > .omc-config.sh << 'EMPTYCONF'
+#!/bin/bash
+export OMC_GH_REPO='test/repo'
+export OMC_PROJECT_NUMBER=''
+export OMC_PROJECT_OWNER='@me'
+EMPTYCONF
+      bash '$HOME/bin/omc-backfill-dates'
+    " >/dev/null 2>&1
+  ) || exit_code=$?
+  if [ "$exit_code" -ne 0 ]; then
+    log_pass "J2. Exits with error when OMC_PROJECT_NUMBER is missing"
+  else
+    log_fail "J2. Exits with error when OMC_PROJECT_NUMBER is missing" "Exit code was 0"
+  fi
+
+  # J3. --project flag overrides OMC_PROJECT_NUMBER
+  # Create a gh stub that logs all calls
+  cat > "$TMPDIR/bin/gh" << 'GHSTUB_BF'
+#!/bin/bash
+ALL_ARGS="$*"
+echo "$ALL_ARGS" >> /tmp/omc-unit-backfill-calls.txt
+case "$ALL_ARGS" in
+  *"project field-list"*)
+    echo '{"fields":[{"name":"Start Date","id":"PVTF_start"},{"name":"Target Date","id":"PVTF_end"}]}'
+    ;;
+  *"project item-list"*)
+    echo '{"items":[]}'
+    ;;
+  *"project view"*)
+    echo '{"id":"PVT_proj1","number":1}'
+    ;;
+  *)
+    echo ""
+    ;;
+esac
+GHSTUB_BF
+  chmod +x "$TMPDIR/bin/gh"
+
+  # Restore valid config
+  cat > "$TMPDIR/.omc-config.sh" << 'CONF_BF'
+#!/bin/bash
+export OMC_GH_REPO="test/repo"
+export OMC_PROJECT_NUMBER="1"
+export OMC_PROJECT_OWNER="@me"
+export OMC_STATUS_FIELD_ID="PVTSSF_test"
+export OMC_DATE_START_FIELD_ID=""
+export OMC_DATE_END_FIELD_ID=""
+CONF_BF
+
+  rm -f /tmp/omc-unit-backfill-calls.txt
+  (cd "$TMPDIR" && bash "$HOME/bin/omc-backfill-dates" --project 7 --dry-run) >/dev/null 2>&1 || true
+  if [ -f /tmp/omc-unit-backfill-calls.txt ] && grep -q "7" /tmp/omc-unit-backfill-calls.txt; then
+    log_pass "J3. --project flag overrides OMC_PROJECT_NUMBER"
+  else
+    log_fail "J3. --project flag overrides" "No call with project 7 found"
+  fi
+  rm -f /tmp/omc-unit-backfill-calls.txt
+
+  # J4. Detects existing date fields (no creation needed)
+  local bf_output
+  bf_output=$(cd "$TMPDIR" && bash "$HOME/bin/omc-backfill-dates" --dry-run 2>&1) || true
+  assert_output_contains "$bf_output" "Start Date field exists" "J4. Detects existing Start Date field"
+
+  # J5. Dry-run mode does not call omc_update_date
+  # Create gh stub with experiment issues
+  cat > "$TMPDIR/bin/gh" << 'GHSTUB_BF2'
+#!/bin/bash
+ALL_ARGS="$*"
+case "$ALL_ARGS" in
+  *"project field-list"*)
+    echo '{"fields":[{"name":"Start Date","id":"PVTF_start"},{"name":"Target Date","id":"PVTF_end"}]}'
+    ;;
+  *"project item-list"*)
+    echo '{"items":[{"id":"PVTI_1","content":{"type":"Issue","number":10,"title":"e001: Test experiment"}}]}'
+    ;;
+  *"project view"*)
+    echo '{"id":"PVT_proj1","number":1}'
+    ;;
+  *"repos/"*"/issues/"*)
+    echo '{"created_at":"2026-01-15T10:00:00Z","closed_at":"2026-02-20T15:30:00Z","state":"closed"}'
+    ;;
+  *"project item-edit"*"--date"*)
+    echo "$ALL_ARGS" >> /tmp/omc-unit-backfill-date-edits.txt
+    echo 'ok'
+    ;;
+  *)
+    echo ""
+    ;;
+esac
+GHSTUB_BF2
+  chmod +x "$TMPDIR/bin/gh"
+
+  rm -f /tmp/omc-unit-backfill-date-edits.txt
+  bf_output=$(cd "$TMPDIR" && bash "$HOME/bin/omc-backfill-dates" --dry-run 2>&1) || true
+  if [ ! -f /tmp/omc-unit-backfill-date-edits.txt ]; then
+    log_pass "J5. Dry-run mode does not apply date changes"
+  else
+    log_fail "J5. Dry-run mode does not apply" "Found date edit calls in dry-run"
+  fi
+  assert_output_contains "$bf_output" "DRY-RUN" "J6. Dry-run output shows DRY-RUN label"
+
+  # J7. Live mode calls omc_update_date for start and end dates
+  rm -f /tmp/omc-unit-backfill-date-edits.txt
+  bf_output=$(cd "$TMPDIR" && bash "$HOME/bin/omc-backfill-dates" 2>&1) || true
+  if [ -f /tmp/omc-unit-backfill-date-edits.txt ]; then
+    local edit_count
+    edit_count=$(wc -l < /tmp/omc-unit-backfill-date-edits.txt)
+    if [ "$edit_count" -ge 2 ]; then
+      log_pass "J7. Live mode sets both Start Date and Target Date ($edit_count calls)"
+    else
+      log_fail "J7. Live mode sets both dates" "Only $edit_count date edit call(s)"
+    fi
+  else
+    log_fail "J7. Live mode sets dates" "No date edit calls found"
+  fi
+
+  # J8. Summary shows correct counts
+  assert_output_contains "$bf_output" "Start Date set:" "J8. Summary shows Start Date count"
+
+  # J9. --project rejects non-integer values
+  exit_code=0
+  (cd "$TMPDIR" && bash "$HOME/bin/omc-backfill-dates" --project "abc" 2>&1) || exit_code=$?
+  if [ "$exit_code" -ne 0 ]; then
+    log_pass "J9. --project rejects non-integer value 'abc'"
+  else
+    log_fail "J9. --project rejects non-integer" "Exit code was 0"
+  fi
+
+  # J10. Open issue skips Target Date but still sets Start Date
+  cat > "$TMPDIR/bin/gh" << 'GHSTUB_OPEN'
+#!/bin/bash
+ALL_ARGS="$*"
+case "$ALL_ARGS" in
+  *"project field-list"*)
+    echo '{"fields":[{"name":"Start Date","id":"PVTF_start"},{"name":"Target Date","id":"PVTF_end"}]}'
+    ;;
+  *"project item-list"*)
+    echo '{"items":[{"id":"PVTI_2","content":{"type":"Issue","number":20,"title":"e002: Open experiment"}}]}'
+    ;;
+  *"project view"*)
+    echo '{"id":"PVT_proj1","number":1}'
+    ;;
+  *"api repos/"*)
+    echo '{"created_at":"2026-02-01T10:00:00Z","closed_at":null,"state":"open"}'
+    ;;
+  *"project item-edit"*"--date"*)
+    echo "$ALL_ARGS" >> /tmp/omc-unit-backfill-open-edits.txt
+    echo 'ok'
+    ;;
+  *)
+    echo ""
+    ;;
+esac
+GHSTUB_OPEN
+  chmod +x "$TMPDIR/bin/gh"
+
+  rm -f /tmp/omc-unit-backfill-open-edits.txt
+  bf_output=$(cd "$TMPDIR" && bash "$HOME/bin/omc-backfill-dates" 2>&1) || true
+  if echo "$bf_output" | grep -q "skipped (issue still open)"; then
+    log_pass "J10. Open issue skips Target Date with 'still open' message"
+  else
+    log_fail "J10. Open issue skips Target Date" "No 'still open' message in output"
+  fi
+
+  # J11. Open issue still sets Start Date (only 1 date edit call)
+  if [ -f /tmp/omc-unit-backfill-open-edits.txt ]; then
+    local open_edit_count
+    open_edit_count=$(wc -l < /tmp/omc-unit-backfill-open-edits.txt)
+    if [ "$open_edit_count" -eq 1 ]; then
+      log_pass "J11. Open issue sets Start Date only (1 call, not 2)"
+    else
+      log_fail "J11. Open issue sets Start Date only" "Expected 1 call, got $open_edit_count"
+    fi
+  else
+    log_fail "J11. Open issue sets Start Date only" "No date edit calls found"
+  fi
+  rm -f /tmp/omc-unit-backfill-open-edits.txt
+
+  # Cleanup
+  rm -f /tmp/omc-unit-backfill-calls.txt
+  rm -f /tmp/omc-unit-backfill-date-edits.txt
+
+  # Restore standard config and gh stub
+  cat > "$TMPDIR/.omc-config.sh" << 'CONF'
+#!/bin/bash
+export OMC_GH_REPO="test/repo"
+export OMC_PROJECT_NUMBER="1"
+export OMC_PROJECT_OWNER="@me"
+export OMC_STATUS_FIELD_ID="PVTSSF_test"
+export OMC_STATUS_BACKLOG="backlog_id"
+export OMC_STATUS_AI_DOING="ai_doing_id"
+export OMC_STATUS_DONE="done_id"
+export OMC_CURRENT_MILESTONE=""
+export OMC_MILESTONE_AUTO_ASSIGN="true"
+CONF
+
+  cat > "$TMPDIR/bin/gh" << 'GHSTUB'
+#!/bin/bash
+ALL_ARGS="$*"
+case "$ALL_ARGS" in
+  *"issue create"*)
+    echo "https://github.com/test/repo/issues/42"
+    ;;
+  *"repo view"*)
+    echo '{"nameWithOwner":"test/repo"}'
+    ;;
+  *"issue list"*)
+    echo '[]'
+    ;;
+  *"milestones?state=all"*|*"milestones --jq"*)
+    echo '[{"title":"v1.0","number":1,"state":"open","open_issues":4,"closed_issues":3,"due_on":null}]'
+    ;;
+  *"milestones/"*"--method PATCH"*)
+    echo '{"number":1,"state":"closed"}'
+    ;;
+  *"milestones/"*)
+    echo '{"title":"v1.0","number":1,"state":"open","open_issues":4,"closed_issues":3,"due_on":null}'
+    ;;
+  *"milestones"*"--method POST"*)
+    echo '{"number":2}'
+    ;;
+  *"milestones"*)
+    echo '[{"title":"v1.0","number":1,"state":"open","open_issues":4,"closed_issues":3,"due_on":null}]'
+    ;;
+  *"project item-list"*)
+    echo '{"items":[{"id":"PVTI_item1","content":{"number":42}}]}'
+    ;;
+  *"project view"*)
+    echo '{"id":"PVT_proj1","number":1}'
+    ;;
+  *"project item-add"*|*"project item-edit"*)
+    echo '{"id":"PVTI_new"}'
+    ;;
+  *"project field-list"*)
+    echo '{"fields":[{"name":"Status","id":"PVTSSF_test","options":[]}]}'
+    ;;
+  *)
+    echo "gh-stub: unhandled: $ALL_ARGS" >&2
+    exit 0
+    ;;
+esac
+GHSTUB
+  chmod +x "$TMPDIR/bin/gh"
+}
+
 # ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
@@ -1529,6 +2143,8 @@ main() {
   test_milestone_end
   test_manifest_v3_foundation
   test_selective_stale_propagation
+  test_date_field_support
+  test_backfill_dates
 
   print_summary
 

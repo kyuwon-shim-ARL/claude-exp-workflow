@@ -153,6 +153,11 @@ if [ -n "$OMC_STATUS_AI_DOING" ]; then
   omc_update_status "$ISSUE_NUM" "$OMC_STATUS_AI_DOING" 2>/dev/null || true
 fi
 
+# Set Start Date for GitHub Project Roadmap view
+if [ -n "$OMC_DATE_START_FIELD_ID" ]; then
+  omc_update_date "$ISSUE_NUM" "$OMC_DATE_START_FIELD_ID" "$(date -u +%Y-%m-%d)" 2>/dev/null || true
+fi
+
 echo ""
 echo "=========================================="
 echo "Feature Issue #$ISSUE_NUM created"

@@ -77,6 +77,54 @@ export OMC_STATUS_DONE="${OMC_STATUS_DONE:-}"
 export OMC_CURRENT_MILESTONE="${OMC_CURRENT_MILESTONE:-}"
 export OMC_MILESTONE_AUTO_ASSIGN="${OMC_MILESTONE_AUTO_ASSIGN:-true}"
 
+# Date field IDs for GitHub Project Roadmap view
+export OMC_DATE_START_FIELD_ID="${OMC_DATE_START_FIELD_ID:-}"
+export OMC_DATE_END_FIELD_ID="${OMC_DATE_END_FIELD_ID:-}"
+
+# Update date field on a project item
+omc_update_date() {
+  local issue_num=$1
+  local field_id=$2
+  local date_value=$3  # YYYY-MM-DD format
+
+  local item_id=$(omc_get_item_id "$issue_num")
+  local project_id=$(omc_get_project_id)
+
+  if [ -z "$item_id" ] || [ "$item_id" = "null" ]; then
+    echo "Warning: Issue #$issue_num is not in the project, skipping date update" >&2
+    return 0
+  fi
+
+  gh project item-edit \
+    --project-id "$project_id" \
+    --id "$item_id" \
+    --field-id "$field_id" \
+    --date "$date_value" 2>/dev/null
+
+  echo "Updated Issue #$issue_num date field"
+}
+
+# Clear date field on a project item
+omc_clear_date() {
+  local issue_num=$1
+  local field_id=$2
+
+  local item_id=$(omc_get_item_id "$issue_num")
+  local project_id=$(omc_get_project_id)
+
+  if [ -z "$item_id" ] || [ "$item_id" = "null" ]; then
+    return 0
+  fi
+
+  gh project item-edit \
+    --project-id "$project_id" \
+    --id "$item_id" \
+    --field-id "$field_id" \
+    --date "" 2>/dev/null
+
+  echo "Cleared Issue #$issue_num date field"
+}
+
 # Load project-specific configuration if exists
 if [ -f ".omc-config.sh" ]; then
   source ".omc-config.sh"
