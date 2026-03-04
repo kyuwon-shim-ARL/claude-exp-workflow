@@ -10,7 +10,7 @@
     {
       "name": "exp-workflow",
       "source": "./",
-      "description": "Experiment lifecycle: /exp-init, /exp-start, /exp-status, /exp-finalize, /exp-milestone, /exp-foundation"
+      "description": "Experiment lifecycle: /exp-init, /exp-start, /exp-status, /exp-finalize, /exp-milestone, /exp-foundation + Date Field Roadmap support"
     }
   ]
 }

@@ -66,6 +66,7 @@ GitHub Project (칸반/마일스톤) + MANIFEST.yaml (결과 추적) + experimen
 10. **실험 시작 시 마일스톤 자동 연결**: MANIFEST milestone.title이 있으면 실험 항목에 milestone 필드 자동 추가
 11. **실험 시작 시 foundation 자동 연결**: MANIFEST foundations에서 `status: current`인 항목이 있으면 실험 항목에 `foundation` 필드 자동 추가 + `stale: false` 설정 + `depends_on_components` 설정 (`--depends-on` 플래그 지정 시 해당 값, 미지정 시 생략하여 전체 의존)
 12. **Foundation upgrade 시 선택적 stale 전파**: `--changed-components` 지정 시 해당 component에 의존하는 실험만 stale 처리. 미지정 시 전체 stale (v1.3.0 호환). 매칭 알고리즘: `experiment.depends_on_components ∩ changed_components ≠ ∅ → stale`. `depends_on_components` 미선언 실험은 전체 의존으로 간주하여 항상 stale.
+13. **Date Field 자동 연동**: `OMC_DATE_START_FIELD_ID` / `OMC_DATE_END_FIELD_ID`가 `.omc-config.sh`에 설정되어 있으면, `/exp-start` 시 Start Date를 오늘로 설정하고, `/exp-finalize` 시 Target Date를 오늘로 설정. `--reopen` 시 Target Date를 삭제(`--clear`). 미설정 시 날짜 필드 조작을 건너뜀 (graceful skip).
 
 ## MANIFEST.yaml Structure
 

@@ -2,7 +2,7 @@
 # =============================================================================
 # exp-workflow Unit Test Script
 # =============================================================================
-# Tests 6 omc-tools scripts with mocked gh CLI (no network calls):
+# Tests 7 omc-tools scripts with mocked gh CLI (no network calls):
 #   omc-load-config, omc-feature-start, omc-feature-progress,
 #   omc-milestone-start, omc-milestone-status, omc-milestone-end,
 #   omc-backfill-dates
@@ -1610,7 +1610,7 @@ CONF_NODATE
     log_fail "I5. omc-feature-start skips date when empty" "Unexpected date calls found"
   fi
 
-  # I6. omc_clear_date calls gh project item-edit --date "" (not --clear)
+  # I6. omc_clear_date calls gh project item-edit --clear (not --date "")
   cat > "$TMPDIR/bin/gh" << 'GHSTUB_CLEAR'
 #!/bin/bash
 ALL_ARGS="$*"
@@ -1647,14 +1647,10 @@ CONF_CLEAR
     source $HOME/bin/omc-load-config 2>/dev/null
     omc_clear_date 99 'PVTF_end_test'
   " 2>/dev/null
-  if [ -f /tmp/omc-unit-clear-calls.txt ] && grep -q '\-\-date' /tmp/omc-unit-clear-calls.txt; then
-    if grep -q '\-\-clear' /tmp/omc-unit-clear-calls.txt; then
-      log_fail "I6. omc_clear_date uses --date (not --clear)" "Found --clear flag"
-    else
-      log_pass "I6. omc_clear_date uses --date to clear date field"
-    fi
+  if [ -f /tmp/omc-unit-clear-calls.txt ] && grep -q '\-\-clear' /tmp/omc-unit-clear-calls.txt; then
+    log_pass "I6. omc_clear_date uses --clear to clear date field"
   else
-    log_fail "I6. omc_clear_date uses --date to clear" "No --date call found"
+    log_fail "I6. omc_clear_date uses --clear to clear" "No --clear call found"
   fi
   rm -f /tmp/omc-unit-clear-calls.txt
 

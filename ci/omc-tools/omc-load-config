@@ -120,7 +120,7 @@ omc_clear_date() {
     --project-id "$project_id" \
     --id "$item_id" \
     --field-id "$field_id" \
-    --date "" 2>/dev/null
+    --clear 2>/dev/null
 
   echo "Cleared Issue #$issue_num date field"
 }
