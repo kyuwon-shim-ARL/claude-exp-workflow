@@ -91,7 +91,51 @@ If no active milestone in MANIFEST, show all experiments without grouping (backw
 - Open experiments show blank Target Date.
 
 #### Detail Mode (with experiment ID)
-Shows: Issue info, branch, task checklist, output files, recent commits, Start Date, Target Date.
+When an experiment ID is provided (e.g., `/exp-status e003`):
+
+1. **Read MANIFEST**: Find experiment entry by ID. If not found, show available experiments and exit.
+2. **Fetch GitHub Issue data**:
+```bash
+gh issue view {issue_number} --repo "$OMC_GH_REPO" --json title,state,body,labels,createdAt
+```
+3. **Extract task checklist**: Parse issue body for `- [ ]` and `- [x]` patterns, compute completion ratio.
+4. **List output files**:
+```bash
+ls -la outputs/e{NUM}/ 2>/dev/null
+```
+5. **Recent commits on branch**:
+```bash
+git log --oneline -5 {branch_name} 2>/dev/null
+```
+6. **Fetch Date fields** (if configured):
+   Same as overview mode — query `gh project item-list` for Start Date and Target Date.
+
+7. **Display**:
+```
+Experiment e003: DEG Analysis
+  Status:       experimental
+  Foundation:   v2 (current)
+  Depends On:   labels
+  Stale:        no
+  Issue:        #8 (open)
+  Branch:       feature-8
+  Start Date:   2026-02-15
+  Target Date:  -
+  Milestone:    v1.0-foundation
+
+  Tasks: [####........] 2/4
+    [x] Plan 작성
+    [x] 실험 실행
+    [ ] 결과 검증
+    [ ] 결과 해석
+
+  Outputs:
+    (none yet)
+
+  Recent Commits:
+    a1b2c3d Add DEG analysis script
+    e4f5g6h Initial experiment setup
+```
 
 ### 6. Edge Cases
 - No MANIFEST.yaml → "Run /exp-init"

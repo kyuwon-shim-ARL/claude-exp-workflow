@@ -207,6 +207,12 @@ case "$ALL_ARGS" in
   *"project field-list"*)
     echo '{"fields":[{"name":"Status","id":"PVTSSF_test","options":[]}]}'
     ;;
+  *"label create"*)
+    echo "Label created"
+    ;;
+  *"issue edit"*"--add-label"*)
+    echo "ok"
+    ;;
   *)
     echo "gh-stub: unhandled: $ALL_ARGS" >&2
     exit 0
@@ -2234,6 +2240,45 @@ GHSTUB
 }
 
 # ---------------------------------------------------------------------------
+# K. Experiment Label Support (4 tests)
+# ---------------------------------------------------------------------------
+test_experiment_label() {
+  log_section "K. Experiment Label Support (4 tests)"
+
+  # K1. exp-start.md contains --add-label experiment instruction
+  assert_file_contains \
+    "$PROJECT_ROOT/commands/exp-start.md" \
+    'add-label "experiment"' \
+    "K1. exp-start.md contains --add-label experiment instruction"
+
+  # K2. exp-init.md contains gh label create experiment instruction
+  assert_file_contains \
+    "$PROJECT_ROOT/commands/exp-init.md" \
+    'label create "experiment"' \
+    "K2. exp-init.md contains gh label create experiment instruction"
+
+  # K3. gh stub handles label create command (exits 0)
+  local label_output
+  label_output=$(gh label create "experiment" --color "7B68EE" --repo "test/repo" 2>&1)
+  local label_exit=$?
+  if [ $label_exit -eq 0 ]; then
+    log_pass "K3. gh label create exits 0 (no error)"
+  else
+    log_fail "K3. gh label create exits 0 (no error)" "Exit code: $label_exit, output: $label_output"
+  fi
+
+  # K4. gh stub handles issue edit --add-label command (exits 0)
+  local edit_output
+  edit_output=$(gh issue edit 42 --add-label "experiment" --repo "test/repo" 2>&1)
+  local edit_exit=$?
+  if [ $edit_exit -eq 0 ]; then
+    log_pass "K4. gh issue edit --add-label exits 0 (no error)"
+  else
+    log_fail "K4. gh issue edit --add-label exits 0 (no error)" "Exit code: $edit_exit, output: $edit_output"
+  fi
+}
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 print_summary() {
@@ -2279,6 +2324,7 @@ main() {
   test_selective_stale_propagation
   test_date_field_support
   test_backfill_dates
+  test_experiment_label
 
   print_summary
 
