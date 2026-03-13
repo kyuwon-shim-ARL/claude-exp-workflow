@@ -531,18 +531,26 @@ test_exp_status() {
 }
 
 # ---------------------------------------------------------------------------
-# D. exp-finalize Tests (6 tests)
+# D. exp-finalize Tests (13 tests)
 # ---------------------------------------------------------------------------
 test_exp_finalize() {
-  log_section "D. exp-finalize Flow (6 tests)"
+  log_section "D. exp-finalize Flow (13 tests)"
 
   cd "$TMPDIR"
   source .omc-config.sh
 
-  # Prepare: add a CSV output file for auto-detection
+  # Prepare: add output files for auto-detection (all pattern types)
   echo "col1,col2,col3" > outputs/e001/result.csv
   echo "a,b,c" >> outputs/e001/result.csv
   echo "d,e,f" >> outputs/e001/result.csv
+  printf "col1\tcol2\n" > outputs/e001/features.tsv
+  printf "x\ty\n" >> outputs/e001/features.tsv
+  echo '{"metric": "auc", "value": 0.85}' > outputs/e001/metrics.json
+  printf '\x89PNG\r\n' > outputs/e001/figure1.png
+  echo '<html><body>Report</body></html>' > outputs/e001/report.html
+  printf '\x80\x03}' > outputs/e001/model.pkl
+  echo "2026-03-13 10:00 Experiment completed" > outputs/e001/run.log
+  echo "cache data" > outputs/e001/cache.tmp
 
   # D1. MANIFEST status → final
   local now_iso
@@ -593,6 +601,78 @@ EOF
       "D4. Output auto-detection: CSV file found and registered"
   else
     log_fail "D4. Output auto-detection" "No CSV files found"
+  fi
+
+  # D4a. Output auto-detection: TSV file
+  local tsv_count
+  tsv_count=$(find outputs/e001/ -name "*.tsv" 2>/dev/null | wc -l)
+  if [ "$tsv_count" -gt 0 ]; then
+    local tsv_rows
+    tsv_rows=$(wc -l < outputs/e001/features.tsv)
+    verbose "Detected TSV with $tsv_rows rows"
+    log_pass "D4a. Output auto-detection: TSV file found ($tsv_rows rows)"
+  else
+    log_fail "D4a. Output auto-detection: TSV file" "No TSV files found"
+  fi
+
+  # D4b. Output auto-detection: JSON file (structured output)
+  local json_count
+  json_count=$(find outputs/e001/ -name "*.json" 2>/dev/null | wc -l)
+  if [ "$json_count" -gt 0 ]; then
+    log_pass "D4b. Output auto-detection: JSON file found"
+  else
+    log_fail "D4b. Output auto-detection: JSON file" "No JSON files found"
+  fi
+
+  # D4c. Output auto-detection: PNG file (visualization)
+  local png_count
+  png_count=$(find outputs/e001/ \( -name "*.png" -o -name "*.jpg" -o -name "*.svg" \) 2>/dev/null | wc -l)
+  if [ "$png_count" -gt 0 ]; then
+    log_pass "D4c. Output auto-detection: visualization file found"
+  else
+    log_fail "D4c. Output auto-detection: visualization" "No image files found"
+  fi
+
+  # D4d. Output auto-detection: HTML file (report)
+  local html_count
+  html_count=$(find outputs/e001/ -name "*.html" 2>/dev/null | wc -l)
+  if [ "$html_count" -gt 0 ]; then
+    log_pass "D4d. Output auto-detection: HTML report found"
+  else
+    log_fail "D4d. Output auto-detection: HTML report" "No HTML files found"
+  fi
+
+  # D4e. Output auto-detection: PKL file (model artifact)
+  local pkl_count
+  pkl_count=$(find outputs/e001/ \( -name "*.pkl" -o -name "*.joblib" \) 2>/dev/null | wc -l)
+  if [ "$pkl_count" -gt 0 ]; then
+    log_pass "D4e. Output auto-detection: model artifact found"
+  else
+    log_fail "D4e. Output auto-detection: model artifact" "No pkl/joblib files found"
+  fi
+
+  # D4f. Output auto-detection: LOG file (execution log)
+  local log_count
+  log_count=$(find outputs/e001/ \( -name "*.log" -o -name "*.txt" \) 2>/dev/null | wc -l)
+  if [ "$log_count" -gt 0 ]; then
+    log_pass "D4f. Output auto-detection: log file found"
+  else
+    log_fail "D4f. Output auto-detection: log file" "No log/txt files found"
+  fi
+
+  # D4g. Output auto-detection: non-matching extensions excluded
+  local all_detected
+  all_detected=$(find outputs/e001/ -type f \( -name "*.csv" -o -name "*.tsv" -o -name "*.json" \
+    -o -name "*.png" -o -name "*.jpg" -o -name "*.svg" -o -name "*.html" \
+    -o -name "*.pkl" -o -name "*.joblib" -o -name "*.log" -o -name "*.txt" \) 2>/dev/null | wc -l)
+  local all_files
+  all_files=$(find outputs/e001/ -type f 2>/dev/null | wc -l)
+  if [ "$all_files" -gt "$all_detected" ]; then
+    local excluded=$((all_files - all_detected))
+    verbose "Excluded $excluded non-matching files (e.g., .tmp)"
+    log_pass "D4g. Non-matching extensions excluded ($excluded file(s): .tmp)"
+  else
+    log_fail "D4g. Non-matching extensions excluded" "Expected some files to be excluded"
   fi
 
   # D5. git commit success

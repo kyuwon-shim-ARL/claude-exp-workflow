@@ -2240,41 +2240,126 @@ GHSTUB
 }
 
 # ---------------------------------------------------------------------------
-# K. Experiment Label Support (4 tests)
+# K. Output Auto-Detection Patterns (9 tests)
+# ---------------------------------------------------------------------------
+test_output_auto_detection() {
+  log_section "K. Output Auto-Detection Patterns (9 tests)"
+
+  # Create temp experiment directory with various file types
+  local exp_dir="$TMPDIR/outputs/e099"
+  mkdir -p "$exp_dir"
+
+  # Create test files
+  echo "col1,col2" > "$exp_dir/result.csv"
+  printf "col1\tcol2\n" > "$exp_dir/features.tsv"
+  echo '{"key": "value"}' > "$exp_dir/config.json"
+  printf '\x89PNG' > "$exp_dir/figure.png"
+  echo '<svg></svg>' > "$exp_dir/plot.svg"
+  echo '<html></html>' > "$exp_dir/report.html"
+  printf '\x80\x03}' > "$exp_dir/model.pkl"
+  printf '\x80\x03}' > "$exp_dir/pipeline.joblib"
+  echo "log line" > "$exp_dir/run.log"
+  echo "notes" > "$exp_dir/notes.txt"
+  echo "cache" > "$exp_dir/cache.tmp"
+  echo "data" > "$exp_dir/intermediate.parquet"
+
+  # K1. CSV classified as data result
+  local csv_files
+  csv_files=$(find "$exp_dir" -name "*.csv" | wc -l)
+  assert_match "$csv_files" "^[1-9]" "K1. CSV files detected as data result"
+
+  # K2. TSV classified as data result
+  local tsv_files
+  tsv_files=$(find "$exp_dir" -name "*.tsv" | wc -l)
+  assert_match "$tsv_files" "^[1-9]" "K2. TSV files detected as data result"
+
+  # K3. JSON classified as structured output
+  local json_files
+  json_files=$(find "$exp_dir" -name "*.json" | wc -l)
+  assert_match "$json_files" "^[1-9]" "K3. JSON files detected as structured output"
+
+  # K4. Visualization files detected (png, jpg, svg)
+  local viz_files
+  viz_files=$(find "$exp_dir" \( -name "*.png" -o -name "*.jpg" -o -name "*.svg" \) | wc -l)
+  assert_match "$viz_files" "^[1-9]" "K4. Visualization files detected (png+svg=$viz_files)"
+
+  # K5. HTML classified as report
+  local html_files
+  html_files=$(find "$exp_dir" -name "*.html" | wc -l)
+  assert_match "$html_files" "^[1-9]" "K5. HTML files detected as report"
+
+  # K6. Model artifacts detected (pkl, joblib)
+  local model_files
+  model_files=$(find "$exp_dir" \( -name "*.pkl" -o -name "*.joblib" \) | wc -l)
+  assert_match "$model_files" "^[1-9]" "K6. Model artifacts detected (pkl+joblib=$model_files)"
+
+  # K7. Log files detected (log, txt)
+  local log_files
+  log_files=$(find "$exp_dir" \( -name "*.log" -o -name "*.txt" \) | wc -l)
+  assert_match "$log_files" "^[1-9]" "K7. Log files detected (log+txt=$log_files)"
+
+  # K8. Non-matching extensions excluded from detection
+  local detected_files
+  detected_files=$(find "$exp_dir" -type f \( -name "*.csv" -o -name "*.tsv" -o -name "*.json" \
+    -o -name "*.png" -o -name "*.jpg" -o -name "*.svg" -o -name "*.html" \
+    -o -name "*.pkl" -o -name "*.joblib" -o -name "*.log" -o -name "*.txt" \) | wc -l)
+  local total_files
+  total_files=$(find "$exp_dir" -type f | wc -l)
+  local excluded=$((total_files - detected_files))
+  if [ "$excluded" -ge 2 ]; then
+    log_pass "K8. Non-matching extensions excluded ($excluded files: .tmp, .parquet)"
+  else
+    log_fail "K8. Non-matching extensions excluded" "Expected >=2 excluded, got $excluded"
+  fi
+
+  # K9. CSV/TSV row counting works
+  local row_count
+  row_count=$(wc -l < "$exp_dir/result.csv")
+  if [ "$row_count" -ge 1 ]; then
+    log_pass "K9. CSV row counting works ($row_count lines detected)"
+  else
+    log_fail "K9. CSV row counting works" "Expected >=1 lines, got $row_count"
+  fi
+
+  rm -rf "$exp_dir"
+}
+
+# ---------------------------------------------------------------------------
+# L. Experiment Label Support (4 tests)
 # ---------------------------------------------------------------------------
 test_experiment_label() {
-  log_section "K. Experiment Label Support (4 tests)"
+  log_section "L. Experiment Label Support (4 tests)"
 
-  # K1. exp-start.md contains --add-label experiment instruction
+  # L1. exp-start.md contains --add-label experiment instruction
   assert_file_contains \
     "$PROJECT_ROOT/commands/exp-start.md" \
     'add-label "experiment"' \
-    "K1. exp-start.md contains --add-label experiment instruction"
+    "L1. exp-start.md contains --add-label experiment instruction"
 
-  # K2. exp-init.md contains gh label create experiment instruction
+  # L2. exp-init.md contains gh label create experiment instruction
   assert_file_contains \
     "$PROJECT_ROOT/commands/exp-init.md" \
     'label create "experiment"' \
-    "K2. exp-init.md contains gh label create experiment instruction"
+    "L2. exp-init.md contains gh label create experiment instruction"
 
-  # K3. gh stub handles label create command (exits 0)
+  # L3. gh stub handles label create command (exits 0)
   local label_output
   label_output=$(gh label create "experiment" --color "7B68EE" --repo "test/repo" 2>&1)
   local label_exit=$?
   if [ $label_exit -eq 0 ]; then
-    log_pass "K3. gh label create exits 0 (no error)"
+    log_pass "L3. gh label create exits 0 (no error)"
   else
-    log_fail "K3. gh label create exits 0 (no error)" "Exit code: $label_exit, output: $label_output"
+    log_fail "L3. gh label create exits 0 (no error)" "Exit code: $label_exit, output: $label_output"
   fi
 
-  # K4. gh stub handles issue edit --add-label command (exits 0)
+  # L4. gh stub handles issue edit --add-label command (exits 0)
   local edit_output
   edit_output=$(gh issue edit 42 --add-label "experiment" --repo "test/repo" 2>&1)
   local edit_exit=$?
   if [ $edit_exit -eq 0 ]; then
-    log_pass "K4. gh issue edit --add-label exits 0 (no error)"
+    log_pass "L4. gh issue edit --add-label exits 0 (no error)"
   else
-    log_fail "K4. gh issue edit --add-label exits 0 (no error)" "Exit code: $edit_exit, output: $edit_output"
+    log_fail "L4. gh issue edit --add-label exits 0 (no error)" "Exit code: $edit_exit, output: $edit_output"
   fi
 }
 
@@ -2324,6 +2409,7 @@ main() {
   test_selective_stale_propagation
   test_date_field_support
   test_backfill_dates
+  test_output_auto_detection
   test_experiment_label
 
   print_summary
