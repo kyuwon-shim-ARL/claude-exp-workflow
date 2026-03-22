@@ -2364,6 +2364,125 @@ test_experiment_label() {
 }
 
 # ---------------------------------------------------------------------------
+# M. Master Router Command Tests (12 tests)
+# ---------------------------------------------------------------------------
+test_master_router() {
+  log_section "M. Master Router Command Tests (12 tests)"
+
+  local cmd_file="$PROJECT_ROOT/commands/exp-workflow.md"
+
+  # M1. exp-workflow.md command file exists
+  assert_file_exists \
+    "$cmd_file" \
+    "M1. exp-workflow.md master router command file exists"
+
+  # M2. plugin.json contains commands path
+  assert_file_contains \
+    "$PROJECT_ROOT/.claude-plugin/plugin.json" \
+    '"commands": "./commands/"' \
+    "M2. plugin.json contains commands path"
+
+  # M3. plugin.json has both commands and skills paths
+  assert_file_contains \
+    "$PROJECT_ROOT/.claude-plugin/plugin.json" \
+    '"skills": "./skills/"' \
+    "M3. plugin.json retains skills path alongside commands"
+
+  # M4. exp-workflow.md has correct frontmatter description
+  assert_file_contains \
+    "$cmd_file" \
+    'description:.*마스터 명령어' \
+    "M4. exp-workflow.md frontmatter has master command description"
+
+  # M5. exp-workflow.md documents status subcommand routing
+  assert_file_contains \
+    "$cmd_file" \
+    '| `status`' \
+    "M5. exp-workflow.md documents status subcommand"
+
+  # M6. exp-workflow.md documents start subcommand routing
+  assert_file_contains \
+    "$cmd_file" \
+    '| `start`' \
+    "M6. exp-workflow.md documents start subcommand"
+
+  # M7. exp-workflow.md documents finalize subcommand routing
+  assert_file_contains \
+    "$cmd_file" \
+    '| `finalize`' \
+    "M7. exp-workflow.md documents finalize subcommand"
+
+  # M8. exp-workflow.md documents milestone subcommand routing
+  assert_file_contains \
+    "$cmd_file" \
+    '| `milestone`' \
+    "M8. exp-workflow.md documents milestone subcommand"
+
+  # M9. exp-workflow.md documents foundation subcommand routing
+  assert_file_contains \
+    "$cmd_file" \
+    '| `foundation`' \
+    "M9. exp-workflow.md documents foundation subcommand"
+
+  # M10. exp-workflow.md documents Korean keyword fallback routing
+  assert_file_contains \
+    "$cmd_file" \
+    '| `현황`' \
+    "M10. exp-workflow.md documents Korean keyword fallback (현황)"
+
+  # M11. exp-workflow.md default action routes to exp-status
+  assert_file_contains \
+    "$cmd_file" \
+    'exp-workflow:exp-status' \
+    "M11. exp-workflow.md default routes to exp-status"
+
+  # M12. SKILL.md contains master command recognition patterns
+  assert_file_contains \
+    "$PROJECT_ROOT/skills/experiment-workflow/SKILL.md" \
+    '실험 관리.*실험 워크플로우.*관리해줘' \
+    "M12. SKILL.md has master command recognition patterns"
+}
+
+# ---------------------------------------------------------------------------
+# N. Master Router SKILL.md Integration Tests (5 tests)
+# ---------------------------------------------------------------------------
+test_master_router_skill_integration() {
+  log_section "N. Master Router SKILL.md Integration Tests (5 tests)"
+
+  local skill_file="$PROJECT_ROOT/skills/experiment-workflow/SKILL.md"
+
+  # N1. SKILL.md has 마스터 명령어 section header
+  assert_file_contains \
+    "$skill_file" \
+    '마스터 명령어' \
+    "N1. SKILL.md has master command section header"
+
+  # N2. SKILL.md documents bare /exp-workflow default behavior
+  assert_file_contains \
+    "$skill_file" \
+    '/exp-workflow.*단독.*exp-status' \
+    "N2. SKILL.md documents bare /exp-workflow → exp-status"
+
+  # N3. SKILL.md documents exp-workflow:exp-workflow router skill
+  assert_file_contains \
+    "$skill_file" \
+    'exp-workflow:exp-workflow' \
+    "N3. SKILL.md documents exp-workflow:exp-workflow router reference"
+
+  # N4. exp-workflow.md has help subcommand
+  assert_file_contains \
+    "$PROJECT_ROOT/commands/exp-workflow.md" \
+    '| `help`' \
+    "N4. exp-workflow.md documents help subcommand"
+
+  # N5. exp-workflow.md has Skill() routing examples
+  assert_file_contains \
+    "$PROJECT_ROOT/commands/exp-workflow.md" \
+    'Skill(skill="exp-workflow:' \
+    "N5. exp-workflow.md has Skill() routing call examples"
+}
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 print_summary() {
@@ -2411,6 +2530,8 @@ main() {
   test_backfill_dates
   test_output_auto_detection
   test_experiment_label
+  test_master_router
+  test_master_router_skill_integration
 
   print_summary
 
