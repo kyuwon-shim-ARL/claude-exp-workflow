@@ -12,6 +12,12 @@ GitHub Project (칸반/마일스톤) + MANIFEST.yaml (결과 추적) + experimen
 
 ## Recognition Pattern
 
+**마스터 명령어 (bare /exp-workflow):**
+- "/exp-workflow" (단독) → /exp-workflow:exp-status (현황 조회)
+- "exp-workflow" / "실험 관리" / "실험 워크플로우" / "관리해줘" → /exp-workflow:exp-workflow (마스터 라우터)
+- "/exp-workflow help" → 사용 가능한 서브커맨드 안내
+
+**개별 명령어:**
 - "e{NUM} 실험 시작" → /exp-workflow:exp-start
 - "실험 현황" / "진행 상황" → /exp-workflow:exp-status
 - "final로 해줘" / "확정" → /exp-workflow:exp-finalize
