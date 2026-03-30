@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.0] - 2026-03-31
+
+### Added
+- **MANIFEST v4 schema**: `outputs` now uses structured objects `{path, hash, size, mtime, type}` instead of bare strings
+- **SHA-256 hash computation**: `/exp-finalize` auto-computes SHA-256 hash, file size, mtime, and type classification for each output file
+- Type classification: `data`, `structured`, `visualization`, `report`, `model`, `log` based on file extension
+- Downstream integrity gates (omc-research-skills G1-G4) can now verify output file integrity via MANIFEST hash
+
+### Changed
+- `/exp-finalize` Detection Process: steps 4-5 now compute file metadata before MANIFEST update
+- README.md, SKILL.md updated with v4 schema documentation
+
+### Compatibility
+- v1, v2, v3 MANIFESTs fully supported (bare string outputs treated as `{path: string}` with null metadata)
+
 ## [1.5.1] - 2026-03-10
 
 ### Added

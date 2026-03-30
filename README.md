@@ -111,11 +111,11 @@ Finalization will:
 - Set Target Date on GitHub Project
 - Commit MANIFEST + log and create a PR
 
-## MANIFEST.yaml Schema (v3)
+## MANIFEST.yaml Schema (v4)
 
 ```yaml
-version: 3
-updated: "2026-03-10T12:00:00+09:00"
+version: 4
+updated: "2026-03-31T12:00:00+09:00"
 scan_paths:
   - outputs/
 
@@ -139,9 +139,17 @@ experiments:
     params:
       model: logistic_regression
       cv_folds: 5
-    outputs:
-      - outputs/e001/result.csv
-      - outputs/e001/roc_curve.png
+    outputs:                           # v4: structured objects (v3: bare strings)
+      - path: outputs/e001/result.csv
+        hash: "a1b2c3d4e5f6..."        # SHA-256 hex lowercase 64 chars
+        size: 12345                     # bytes
+        mtime: 1711900800              # Unix epoch seconds
+        type: data                     # data | structured | visualization | report | model | log
+      - path: outputs/e001/roc_curve.png
+        hash: "f6e5d4c3b2a1..."
+        size: 45678
+        mtime: 1711900800
+        type: visualization
     status: final              # experimental | final | deprecated
     description: "Baseline logistic regression"
     issue: 42
@@ -152,10 +160,20 @@ experiments:
       - labels
       - cv
     stale: false
-    updated: "2026-03-10T12:00:00+09:00"
+    updated: "2026-03-31T12:00:00+09:00"
 ```
 
-**Backwards compatibility**: v1 (no milestone block), v2 (no foundations), and v3 MANIFESTs are all supported.
+### v4 outputs schema
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `path` | string | yes | File path relative to project root |
+| `hash` | string | yes | SHA-256 hex lowercase, 64 characters |
+| `size` | integer | yes | File size in bytes |
+| `mtime` | integer | yes | Last modified time, Unix epoch seconds |
+| `type` | string | yes | Classification: `data`, `structured`, `visualization`, `report`, `model`, `log` |
+
+**Backwards compatibility**: v1 (no milestone block), v2 (no foundations), v3 (bare string outputs), and v4 MANIFESTs are all supported. When reading v3 outputs (bare strings), treat as `{path: string}` with other fields null.
 
 ## Foundation & Stale Tracking
 

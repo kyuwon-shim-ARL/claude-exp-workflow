@@ -128,8 +128,33 @@ If the experiment has a `milestone` field in MANIFEST, include it in the log ent
 1. List all files in `outputs/e{NUM}/`
 2. Match against patterns above
 3. For CSV/TSV: count rows with `wc -l`
-4. Update MANIFEST `outputs:` array with detected file paths
-5. Write detected files summary to experiment-log.md entry
+4. For each detected file, compute SHA-256 hash and collect metadata:
+   ```bash
+   HASH=$(sha256sum "$FILE" | awk '{print $1}')
+   SIZE=$(stat -c '%s' "$FILE")
+   MTIME=$(stat -c '%Y' "$FILE")
+   ```
+5. Update MANIFEST `outputs:` array with structured objects (MANIFEST v4 format):
+   ```yaml
+   outputs:
+     - path: outputs/e001/result.csv
+       hash: "a1b2c3d4..."   # SHA-256 hex lowercase 64 chars
+       size: 12345            # bytes
+       mtime: 1711900800      # Unix epoch seconds
+       type: data             # classification from pattern table
+   ```
+   **Type classification mapping:**
+   | Pattern | type value |
+   |---------|-----------|
+   | `*.csv`, `*.tsv` | `data` |
+   | `*.json` | `structured` |
+   | `*.png`, `*.jpg`, `*.svg` | `visualization` |
+   | `*.html` | `report` |
+   | `*.pkl`, `*.joblib` | `model` |
+   | `*.log`, `*.txt` | `log` |
+
+   **Backwards compatibility:** When reading MANIFEST, if `outputs` contains bare strings (v3 format), treat them as `{path: string}` with hash/size/mtime/type = null. All downstream consumers must handle both formats.
+6. Write detected files summary to experiment-log.md entry
 
 ### 8. Create Pull Request (Finalization Only)
 ```bash

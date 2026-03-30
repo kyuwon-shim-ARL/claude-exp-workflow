@@ -66,7 +66,7 @@ GitHub Project (칸반/마일스톤) + MANIFEST.yaml (결과 추적) + experimen
    - `script:`: 실행된 메인 스크립트 경로 (예: `scripts/run_e001.py`)
    - `params:`: 실행에 사용된 주요 파라미터 딕셔너리
 4. **ralph 완료 시**: omc-task-check 호출 + experiment-log.md 실행 기록
-5. **실험 확정 시**: MANIFEST status 변경 + `outputs:` 자동 탐지 갱신 + experiment-log.md 확정 기록 + PR 제안
+5. **실험 확정 시**: MANIFEST status 변경 + `outputs:` 자동 탐지 갱신 (v4: SHA-256 hash + size + mtime + type 포함) + experiment-log.md 확정 기록 + PR 제안
 6. **/detailed-report 시**: MANIFEST에서 `status: final` AND (`stale: false` OR stale 필드 없음)인 실험만 스캔
 7. **/research 시**: experiment-log.md에 비평 기록
 8. **마일스톤 시작 시**: omc-milestone-start 호출 + MANIFEST milestone 블록 설정 + experiment-log.md 기록
@@ -109,8 +109,12 @@ experiments:
     path: outputs/e001/
     script: "scripts/run_e001.py"
     params: {}
-    outputs:
-      - outputs/e001/result.csv
+    outputs:                           # v4: structured objects
+      - path: outputs/e001/result.csv
+        hash: "a1b2c3..."               # SHA-256 hex lowercase 64 chars
+        size: 12345                      # bytes
+        mtime: 1711900800               # Unix epoch seconds
+        type: data                       # data|structured|visualization|report|model|log
     status: final
     description: "Batch vs Streaming Analysis"
     issue: 50
@@ -168,7 +172,7 @@ experiments:
 | `final` + `stale: true` | Valid under old pipeline | Excluded from /detailed-report |
 | `deprecated` | Permanently invalidated | Excluded |
 
-**Backwards Compatibility**: version 1 MANIFESTs (without `milestone` block) and version 2 MANIFESTs (without `foundations` block) are fully supported. Missing foundation fields are treated as "no foundation". Missing stale field is treated as "not stale". Missing `depends_on_components` field is treated as "depends on all components" (conservative default — always marked stale on upgrade).
+**Backwards Compatibility**: version 1 MANIFESTs (without `milestone` block), version 2 (without `foundations` block), version 3 (bare string `outputs`), and version 4 MANIFESTs are all supported. When reading v3 `outputs` (bare strings), treat as `{path: string}` with hash/size/mtime/type = null. Missing foundation fields are treated as "no foundation". Missing stale field is treated as "not stale". Missing `depends_on_components` field is treated as "depends on all components" (conservative default — always marked stale on upgrade).
 
 ## Experiment Log Format
 
@@ -199,7 +203,7 @@ experiments:
 
 - DON'T: manually edit MANIFEST status/experiments (use commands instead), use experimental results in /detailed-report, use stale results in /detailed-report, call omc-milestone-* CLI directly (use /exp-milestone instead)
 - DO: always use /exp-start, keep MANIFEST and log in sync, mark final before reporting, use /exp-milestone for milestone management, use /exp-foundation for pipeline versioning
-- NOTE: `script:`, `params:`, `outputs:` fields are auto-populated by /ralph execution and /exp-finalize. These are the only MANIFEST fields that get updated outside of /exp-start and /exp-finalize.
+- NOTE: `script:`, `params:`, `outputs:` fields are auto-populated by /ralph execution and /exp-finalize. `outputs` uses v4 structured format (`{path, hash, size, mtime, type}`) when written by /exp-finalize. When reading, handle both v3 bare strings and v4 objects. These are the only MANIFEST fields that get updated outside of /exp-start and /exp-finalize.
 - NOTE: `foundation`, `depends_on_components`, `stale`, and `stale_reason` fields are managed by /exp-start (auto-link + depends-on) and /exp-foundation upgrade (selective stale marking). Do not manually edit these fields.
 
 ## Foundation Usage Scenarios
