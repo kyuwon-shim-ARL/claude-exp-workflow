@@ -8,6 +8,8 @@ All notable changes to this project will be documented in this file.
 - **MANIFEST v4 schema**: `outputs` now uses structured objects `{path, hash, size, mtime, type}` instead of bare strings
 - **SHA-256 hash computation**: `/exp-finalize` auto-computes SHA-256 hash, file size, mtime, and type classification for each output file
 - Type classification: `data`, `structured`, `visualization`, `report`, `model`, `log` based on file extension
+- **DVC opt-in integration**: `/exp-finalize` Step 7.5 auto-runs `dvc add` + `dvc push` when DVC is installed (graceful skip when absent)
+- DVC setup guide in exp-finalize.md
 - Downstream integrity gates (omc-research-skills G1-G4) can now verify output file integrity via MANIFEST hash
 
 ### Changed
@@ -16,6 +18,7 @@ All notable changes to this project will be documented in this file.
 
 ### Compatibility
 - v1, v2, v3 MANIFESTs fully supported (bare string outputs treated as `{path: string}` with null metadata)
+- DVC is fully optional — zero impact when not installed
 
 ## [1.5.1] - 2026-03-10
 

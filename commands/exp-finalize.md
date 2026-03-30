@@ -156,6 +156,49 @@ If the experiment has a `milestone` field in MANIFEST, include it in the log ent
    **Backwards compatibility:** When reading MANIFEST, if `outputs` contains bare strings (v3 format), treat them as `{path: string}` with hash/size/mtime/type = null. All downstream consumers must handle both formats.
 6. Write detected files summary to experiment-log.md entry
 
+### 7.5. DVC Tracking (opt-in, DVC 설치 시에만)
+
+DVC가 설치되어 있으면 산출물을 자동으로 DVC에 등록합니다. **DVC 미설치 시 이 단계를 자동으로 건너뜁니다 (graceful skip).**
+
+```bash
+if command -v dvc &>/dev/null; then
+  echo "[DVC] DVC 감지됨. 산출물을 DVC에 등록합니다."
+
+  # 1. DVC 초기화 (최초 1회)
+  if [ ! -d ".dvc" ]; then
+    dvc init
+    dvc config core.autostage true  # git add .dvc 자동화
+    echo "[DVC] 프로젝트 DVC 초기화 완료."
+  fi
+
+  # 2. 각 산출물 파일을 DVC로 추적
+  for FILE in outputs/e{NUM}/*; do
+    dvc add "$FILE"
+  done
+
+  # 3. DVC remote가 설정되어 있으면 push
+  if dvc remote list 2>/dev/null | grep -q .; then
+    dvc push
+    echo "[DVC] 산출물 push 완료."
+  else
+    echo "[DVC] remote 미설정. 로컬 DVC 추적만 등록됨. 'dvc remote add'로 원격 저장소를 설정하세요."
+  fi
+
+  # 4. .dvc 파일을 git staging에 추가
+  git add outputs/e{NUM}/*.dvc outputs/.gitignore .dvc/config 2>/dev/null
+else
+  echo "[DVC SKIP] DVC 미설치. 산출물은 MANIFEST v4 hash로만 추적됩니다."
+fi
+```
+
+**DVC 설정 가이드 (최초 1회):**
+```bash
+pip install dvc[s3]           # 또는 dvc[gdrive], dvc[azure] 등
+dvc remote add -d myremote s3://bucket/path   # 원격 저장소 설정
+```
+
+**MANIFEST 연동:** DVC 추적 여부는 MANIFEST에 영향을 주지 않습니다. MANIFEST v4의 hash/size/mtime은 DVC 유무와 무관하게 항상 기록됩니다. DVC는 대용량 파일의 원격 저장/복원을 위한 추가 보험입니다.
+
 ### 8. Create Pull Request (Finalization Only)
 ```bash
 git add outputs/MANIFEST.yaml experiment-log.md
