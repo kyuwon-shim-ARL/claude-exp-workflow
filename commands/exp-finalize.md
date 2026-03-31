@@ -171,9 +171,13 @@ if command -v dvc &>/dev/null; then
     echo "[DVC] 프로젝트 DVC 초기화 완료."
   fi
 
-  # 2. 각 산출물 파일을 DVC로 추적
+  # 2. 각 산출물 파일을 DVC로 추적 (symlink는 건너뜀)
   for FILE in outputs/e{NUM}/*; do
-    dvc add "$FILE"
+    if [ -L "$FILE" ]; then
+      echo "[DVC SKIP] $FILE — symlink (DAS 원본 보호). hash만 추적."
+    else
+      dvc add "$FILE"
+    fi
   done
 
   # 3. DVC remote가 설정되어 있으면 push
